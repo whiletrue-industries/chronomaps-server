@@ -1,10 +1,11 @@
-from firebase_admin import initialize_app, firestore
+from firebase_admin import initialize_app, firestore, credentials
 from firebase_functions import https_fn
 import flask
 import uuid
 from itertools import islice
 
-initialize_app()
+cred = credentials.Certificate("serviceAccountKey.json")
+initialize_app(cred)
 db = firestore.client()
 app = flask.Flask(__name__)
 
