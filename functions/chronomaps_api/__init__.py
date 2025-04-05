@@ -1,13 +1,8 @@
-from firebase_admin import initialize_app, firestore, credentials
-from firebase_functions.params import SecretParam
+from firebase_admin import firestore
 import flask
 import uuid
-import json
 from itertools import islice
 
-serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
-cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
-initialize_app(cred)
 db = firestore.client()
 app = flask.Flask(__name__)
 
