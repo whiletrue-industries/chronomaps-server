@@ -1,10 +1,13 @@
 from firebase_admin import initialize_app, firestore, credentials
 from firebase_functions import https_fn
+from firebase_functions.params import SecretParam
 import flask
 import uuid
+import json
 from itertools import islice
 
-cred = credentials.Certificate("serviceAccountKey.json")
+serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY')
+cred = credentials.Certificate(json.loads(serviceAccount.value))
 initialize_app(cred)
 db = firestore.client()
 app = flask.Flask(__name__)
@@ -137,7 +140,7 @@ def delete_workspace(workspace):
     return {"message": "Workspace deleted"}, 200
 
 # Expose Flask app as a single Cloud Function
-@https_fn.on_request()
+@https_fn.on_request(region='europe-west4')
 def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
     with app.request_context(req.environ):
         return app.full_dispatch_request()
