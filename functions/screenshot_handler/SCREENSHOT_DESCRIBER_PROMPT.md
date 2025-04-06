@@ -33,7 +33,8 @@ The response should be a JSON object that adheres to the following structure:
   "content_certainty": <0-100>, # a score indicating how certain you are with your understanding of the written text of the content. 100 is very certain, 0 is not certain at all or no text or markings were decipherable.
   "future_scenario_tagline": "a short tagline summarizing the future scenario depicted in the screenshot",
   "future_scenario_description": "a detailed description of the future scenario depicted in the screenshot, including key themes, technologies, or societal changes",
-  "future_scenario_topics": [""] # a list of topics that are relevant to the future scenario, such as 'AI', 'social media', 'politics', 'environment', etc.
+  "future_scenario_topics": [""], # a list of topics that are relevant to the future scenario, such as 'AI', 'social media', 'politics', 'environment', etc.
+  "detected_language": "English/Hebrew/Arabic/Unknown/...", # the language of the text in the screenshot, if detected, or "Unknown" if no language is detected.
 }
 ```
 

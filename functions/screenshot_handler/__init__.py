@@ -38,7 +38,9 @@ def screenshot_handler(image_bytes, workspace, api_key):
                 ],
             }
         ],
-        response_format='json_object'
+        response_format={
+            "type": 'json_object'
+        }
     )
 
     content = completion.choices[0].message.content
@@ -57,7 +59,9 @@ def screenshot_handler(image_bytes, workspace, api_key):
         future_scenario_tagline=content['future_scenario_tagline'],
         future_scenario_description=content['future_scenario_description'],
         future_scenario_topics=content['future_scenario_topics'],
-        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+        detected_language=content['detected_language'],
+        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        screenshot_url=blob.public_url
     )
 
     # Create new item in Chronomaps API
@@ -75,7 +79,6 @@ def screenshot_handler(image_bytes, workspace, api_key):
     blob = bucket.blob(f'{workspace}/{item_id}/screenshot.jpg')
     blob.upload_from_string(image_bytes, content_type='image/jpeg')
     blob.make_public()
-    record['screenshot_url'] = blob.public_url
     record['item_id'] = item_id
     record['item_key'] = item_data['item_key']
     
