@@ -144,11 +144,16 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                     payload = arguments.get('payload')
                     if payload:
                         print('PAYLOAD:', payload)
-                        payload = json.loads(payload)
-                        # Update item properties
-                        ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
-                        if error:
-                            return ret, error
+                        try:
+                            payload = json.loads(payload)
+                            # Update item properties
+                            ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
+                            if error:
+                                return ret, error
+                        except json.JSONDecodeError as e:
+                            ret = dict(
+                                error=f"Invalid JSON payload as argument: {e}, maybe try updating one property at a time."
+                            )
                     else:
                         ret = dict(
                             error="Missing payload in update_properties tool call"

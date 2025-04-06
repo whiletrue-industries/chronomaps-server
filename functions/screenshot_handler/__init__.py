@@ -38,6 +38,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
                 ],
             }
         ],
+        response_format='json_object'
     )
 
     content = completion.choices[0].message.content
