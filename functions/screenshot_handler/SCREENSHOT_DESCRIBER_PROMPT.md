@@ -30,7 +30,7 @@ The response should be a JSON object that adheres to the following structure:
   "transition_bar_before_during_after": "MUST BE one of: 'before'/'during'/'after'/'unclear'",
   "transition_bar_certainty": <0-100>, # a score indicating how certain you are with your understanding of the written text and the before/during/after selection. 100 is very certain, 0 is not certain at all or no text or markings were decipherable.
   "content": "textual content of the screenshot in markdown format, see below for details",
-  "content_certainty": <0-100>, # a score indicating how certain you are with your understanding of the written text of the content. 100 is very certain, 0 is not certain at all or no text or markings were decipherable.
+  "content_certainty": <0-100>, # a score indicating how certain you are with your understanding of the written text of the content. 100 is very certain, 0 is not certain at all or no text or markings were decipherable. If the text makes little to no sense, you MUST give a score below 80.
   "future_scenario_tagline": "a short tagline summarizing the future scenario depicted in the screenshot",
   "future_scenario_description": "a detailed description of the future scenario depicted in the screenshot, including key themes, technologies, or societal changes",
   "future_scenario_topics": [""], # a list of topics that are relevant to the future scenario, such as 'AI', 'social media', 'politics', 'environment', etc.
