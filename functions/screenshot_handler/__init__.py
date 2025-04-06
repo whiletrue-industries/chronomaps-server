@@ -2,14 +2,15 @@ from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
 from firebase_functions.params import SecretParam
+from pathlib import Path
+from config import API_KEY, CHRONOMAPS_API_URL
+import os
 import base64
 import json
 import requests
 
 # Use key, instructions, and filename to generate a structured response from openai api
-API_KEY = SecretParam('OPENAI_API_KEY').value.strip()
-INSTRUCTIONS = open('SCREENSHOT_DESCRIBER_PROMPT.md').read().strip()
-CHRONOMAPS_API_URL = SecretParam('CHRONOMAPS_API_URL').value.strip()
+INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 client = OpenAI(api_key=API_KEY)
 
 bucket = storage.bucket()
@@ -50,14 +51,19 @@ def screenshot_handler(image_bytes, workspace, api_key):
         transition_bar_position=content['transition_bar_before_during_after'],
         transition_bar_certainty=content['transition_bar_certainty'],
         content=content['content'],
-        content_certainty=content['certainty'],
+        content_certainty=content['content_certainty'],
         future_scenario_tagline=content['future_scenario_tagline'],
         future_scenario_description=content['future_scenario_description'],
         future_scenario_topics=content['future_scenario_topics'],
     )
 
     # Create new item in Chronomaps API
-    response = requests.post(f'{CHRONOMAPS_API_URL}/{workspace}', json=record, headers={'Authorization': api_key})
+    url = os.path.join(CHRONOMAPS_API_URL, workspace)
+    response = requests.post(url, json=record, headers={'Authorization': api_key})
+    if response.status_code == 403:
+        return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403
+    if response.status_code == 404:
+        return dict(error=f"Workspace {workspace} not found"), 404
     response.raise_for_status()
     item_data = response.json()
     item_id = item_data['item_id']
