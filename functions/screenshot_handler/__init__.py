@@ -1,3 +1,4 @@
+import datetime
 from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
@@ -55,6 +56,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
         future_scenario_tagline=content['future_scenario_tagline'],
         future_scenario_description=content['future_scenario_description'],
         future_scenario_topics=content['future_scenario_topics'],
+        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
 
     # Create new item in Chronomaps API
