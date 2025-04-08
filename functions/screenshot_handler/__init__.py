@@ -44,6 +44,9 @@ def screenshot_handler(image_bytes, workspace, api_key):
     )
 
     content = completion.choices[0].message.content
+    if not content:
+        print('COMPLETION:', completion.choices[0].message.to_dict())
+        return dict(error="No content returned from OpenAI"), 500
     content = content.split('{', 1)[1]
     content = content.rsplit('}', 1)[0]
     content = '{' + content + '}'
