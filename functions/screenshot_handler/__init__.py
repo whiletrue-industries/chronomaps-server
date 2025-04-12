@@ -46,25 +46,26 @@ def screenshot_handler(image_bytes, workspace, api_key):
     content = completion.choices[0].message.content
     if not content:
         print('COMPLETION:', completion.choices[0].message.to_dict())
-        return dict(error="No content returned from OpenAI"), 500
-    content = content.split('{', 1)[1]
-    content = content.rsplit('}', 1)[0]
-    content = '{' + content + '}'
-    content = json.loads(content)
+        record = dict(content="Couldn't understand anything from the screenhsot")
+    else:
+        content = content.split('{', 1)[1]
+        content = content.rsplit('}', 1)[0]
+        content = '{' + content + '}'
+        content = json.loads(content)
 
-    record = dict(
-        screenshot_type=content['screenshot_type'],
-        transition_bar_event=content['transition_bar_transition_event'],
-        transition_bar_position=content['transition_bar_before_during_after'],
-        transition_bar_certainty=content['transition_bar_certainty'],
-        content=content['content'],
-        content_certainty=content['content_certainty'],
-        future_scenario_tagline=content['future_scenario_tagline'],
-        future_scenario_description=content['future_scenario_description'],
-        future_scenario_topics=content['future_scenario_topics'],
-        detected_language=content['detected_language'],
-        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
-    )
+        record = dict(
+            screenshot_type=content['screenshot_type'],
+            transition_bar_event=content['transition_bar_transition_event'],
+            transition_bar_position=content['transition_bar_before_during_after'],
+            transition_bar_certainty=content['transition_bar_certainty'],
+            content=content['content'],
+            content_certainty=content['content_certainty'],
+            future_scenario_tagline=content['future_scenario_tagline'],
+            future_scenario_description=content['future_scenario_description'],
+            future_scenario_topics=content['future_scenario_topics'],
+            detected_language=content['detected_language'],
+            created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+        )
 
     # Create new item in Chronomaps API
     url = os.path.join(CHRONOMAPS_API_URL, workspace)
