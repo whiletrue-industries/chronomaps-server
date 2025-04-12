@@ -1,0 +1,46 @@
+name: Deploy the main branch
+on:
+  push:
+    branches:
+      - main
+jobs:
+  main:
+    name: Deploy to Firebase
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+    - name: Install Firebase CLI
+      run: |
+        npm install -g firebase-tools
+    # - name: Authenticate to Firebase
+    #   env:
+    #     CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+    #   run: |
+    #     echo $CREDENTIALS > $HOME/firebase-key.json
+    #     export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-key.json
+    #     cat $GOOGLE_APPLICATION_CREDENTIALS | head -n 4
+    #     # firebase login:ci
+    - name: Set up python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        cd functions
+        python -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+        cd ..
+    - name: Deploy to Firebase
+      env:
+        FIREBASE_PROJECT: chronomaps3
+        CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+      run: |
+        echo $CREDENTIALS > $HOME/firebase-key.json
+        export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-key.json
+        # cat $GOOGLE_APPLICATION_CREDENTIALS | head -n 4
+        firebase deploy --only functions --debug --project $FIREBASE_PROJECT

@@ -3,9 +3,9 @@ from firebase_functions.params import SecretParam
 from firebase_functions import https_fn, options
 import json
 
-serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
-cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
-initialize_app(cred)
+# serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
+# cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
+initialize_app()
 
 from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn

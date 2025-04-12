@@ -1,0 +1,57 @@
+endpoints:
+  chronomaps_api:
+    availableMemoryMb: null
+    concurrency: null
+    entryPoint: chronomaps_api
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables: []
+    serviceAccountEmail: null
+    timeoutSeconds: null
+  item_ingress_agent:
+    availableMemoryMb: null
+    concurrency: null
+    entryPoint: item_ingress_agent
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: CHRONOMAPS_API_URL
+    - key: OPENAI_API_KEY
+    serviceAccountEmail: null
+    timeoutSeconds: null
+  screenshot_handler:
+    availableMemoryMb: null
+    concurrency: null
+    entryPoint: screenshot_handler
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: CHRONOMAPS_API_URL
+    serviceAccountEmail: null
+    timeoutSeconds: null
+params:
+- name: OPENAI_API_KEY
+  type: secret
+- name: CHRONOMAPS_API_URL
+  type: secret
+requiredAPIs: []
+specVersion: v1alpha1
