@@ -7,6 +7,7 @@ import os
 import base64
 import json
 import requests
+import time
 
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('ITEM_INGRESS_PROMPT.md').read_text().strip()
@@ -34,6 +35,19 @@ TOOLS = [
 client = OpenAI(api_key=API_KEY)
 
 _assistant_id = None
+
+def retry_run(func, *args, **kwargs):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            ret = func(*args, **kwargs)
+            assert ret.status in ['completed', 'requires_action'], f"Unexpected status: {ret.status}"
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(2 ** attempt)  # Exponential backoff
+    return None
 
 def get_assistant_id():
     global _assistant_id
@@ -107,31 +121,37 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         )
         
     assistant_id = get_assistant_id()
-    run = client.beta.threads.runs.create_and_poll(
+    run = retry_run(client.beta.threads.runs.create_and_poll, 
         thread_id=thread.id,
         assistant_id=assistant_id,
     )
 
     reply = ''
+    prev_messages = []
     while True:
-        if run.status not in ['completed', 'requires_action']:
-            return f'Unexpected status: {run.status}', 500
+        if run is None:
+            return dict(error=f'Failed to complete run'), 500
 
         if run.status == 'completed':
             # Log assistant's response when run is completed
-            messages = client.beta.threads.messages.list(thread_id=thread.id, order='desc', limit=1)
+            messages = client.beta.threads.messages.list(thread_id=thread.id, order='desc')
             for message in messages:
-                if message.role == "assistant":
+                if not reply:
+                    if message.role == "assistant":
+                        for content in message.content:
+                            if content.type == 'text':
+                                reply = content.text.value
+                                if 'DONE' in reply[:10]:
+                                    return dict(
+                                        complete=True
+                                    )
+                                break
+                else:
                     for content in message.content:
                         if content.type == 'text':
-                            reply = content.text.value
-                            if 'DONE' in reply[:10]:
-                                return dict(
-                                    complete=True
-                                )
-                            break
-                    if reply:
-                        break
+                            if 'DONE' in content.text.value[:10]:
+                                continue
+                            prev_messages.insert(0, dict(role=message.role, content=content.text.value))
             break
         
         elif run.status == 'requires_action':
@@ -167,7 +187,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                     output=json.dumps(ret, ensure_ascii=False, indent=2)
                 ))
 
-            run = client.beta.threads.runs.submit_tool_outputs_and_poll(
+            run = retry_run(client.beta.threads.runs.submit_tool_outputs_and_poll, 
                 thread_id=thread.id,
                 run_id=run.id,
                 tool_outputs=tool_outputs
@@ -182,5 +202,6 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
 
     return dict(
         complete=False,
+        prev_messages=prev_messages,
         message=reply
     )
