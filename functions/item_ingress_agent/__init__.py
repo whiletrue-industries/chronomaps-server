@@ -187,7 +187,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 for block in event.data.delta.content:
                     if block.type == 'text' and block.text.value:
                         text += block.text.value
-                yield dict(type='text', value=text)
+                yield dict(kind='text', value=text)
 
     if new_thread:
         # update thread_id in item properties
