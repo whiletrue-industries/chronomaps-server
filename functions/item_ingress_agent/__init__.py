@@ -36,19 +36,6 @@ client = OpenAI(api_key=API_KEY)
 
 _assistant_id = None
 
-def retry_run(func, *args, **kwargs):
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            ret = func(*args, **kwargs)
-            assert ret.status in ['completed', 'requires_action'], f"Unexpected status: {ret.status}"
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(2 ** attempt)  # Exponential backoff
-    return None
-
 def get_assistant_id():
     global _assistant_id
     if _assistant_id is not None:
@@ -97,9 +84,10 @@ def update_item_properties(workspace, item_id, api_key, item_key, payload):
     return item_data, False
 
 def item_ingress_agent(workspace, item_id, api_key, item_key, message):
-    item, error = fetch_item(workspace, item_id, api_key)
-    if error:
-        return item, error
+    item, error_code = fetch_item(workspace, item_id, api_key)
+    if error_code:
+        yield dict(kind='error', message='Failed to fetch item', code=error_code)
+        return
     item_json = json.dumps(item, indent=2, ensure_ascii=False)
     
     new_thread = False
@@ -119,79 +107,78 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             role='user',
             content=message,
         )
+        messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc')
+        for message in messages:
+            for content in message.content:
+                if content.type == 'text':
+                    if 'DONE' in content.text.value[:10]:
+                        continue
+                    yield dict(kind='message', role=message.role, content=content.text.value)
         
     assistant_id = get_assistant_id()
-    run = retry_run(client.beta.threads.runs.create_and_poll, 
+    stream = client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=assistant_id,
+        stream=True,
     )
 
     reply = ''
-    prev_messages = []
-    while True:
-        if run is None:
-            return dict(error=f'Failed to complete run'), 500
+    while stream:    
+        for event in stream:
+            if event.event == 'thread.run.completed':
+                yield dict(kind='status', status='completed')
+                stream = None
+                break
+            elif event.event == 'thread.run.failed':
+                yield dict(kind='status', status='failed')
+                stream = None
+                break
+            elif event.event == 'thread.run.requires_action':
+                run = event.data
+                tool_outputs = []
+                for tool in run.required_action.submit_tool_outputs.tool_calls:
+                    arguments = json.loads(tool.function.arguments)
 
-        if run.status == 'completed':
-            # Log assistant's response when run is completed
-            messages = client.beta.threads.messages.list(thread_id=thread.id, order='desc')
-            for message in messages:
-                if not reply:
-                    if message.role == "assistant":
-                        for content in message.content:
-                            if content.type == 'text':
-                                reply = content.text.value
-                                if 'DONE' in reply[:10]:
-                                    return dict(
-                                        complete=True
-                                    )
-                                break
-                else:
-                    for content in message.content:
-                        if content.type == 'text':
-                            if 'DONE' in content.text.value[:10]:
-                                continue
-                            prev_messages.insert(0, dict(role=message.role, content=content.text.value))
-            break
-        
-        elif run.status == 'requires_action':
-            tool_outputs = []
-            for tool in run.required_action.submit_tool_outputs.tool_calls:
-                arguments = json.loads(tool.function.arguments)
-
-                # Handle different tool types
-                if tool.function.name == 'update_properties':
-                    payload = arguments.get('payload')
-                    if payload:
-                        print('PAYLOAD:', payload)
-                        try:
-                            payload = json.loads(payload)
-                            # Update item properties
-                            ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
-                            if error:
-                                return ret, error
-                        except json.JSONDecodeError as e:
+                    # Handle different tool types
+                    if tool.function.name == 'update_properties':
+                        payload = arguments.get('payload')
+                        if payload:
+                            print('PAYLOAD:', payload)
+                            try:
+                                payload = json.loads(payload)
+                                # Update item properties
+                                ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
+                                if error:
+                                    return ret, error
+                            except json.JSONDecodeError as e:
+                                ret = dict(
+                                    error=f"Invalid JSON payload as argument: {e}, maybe try updating one property at a time."
+                                )
+                        else:
                             ret = dict(
-                                error=f"Invalid JSON payload as argument: {e}, maybe try updating one property at a time."
+                                error="Missing payload in update_properties tool call"
                             )
                     else:
                         ret = dict(
-                            error="Missing payload in update_properties tool call"
+                            error=f"Unknown tool call: {tool.function.name}, only 'update_properties' is supported"
                         )
-                else:
-                    ret = dict(
-                        error=f"Unknown tool call: {tool.function.name}, only 'update_properties' is supported"
-                    )
-                tool_outputs.append(dict(
-                    tool_call_id=tool.id,
-                    output=json.dumps(ret, ensure_ascii=False, indent=2)
-                ))
+                    tool_outputs.append(dict(
+                        tool_call_id=tool.id,
+                        output=json.dumps(ret, ensure_ascii=False, indent=2)
+                    ))
 
-            run = retry_run(client.beta.threads.runs.submit_tool_outputs_and_poll, 
-                thread_id=thread.id,
-                run_id=run.id,
-                tool_outputs=tool_outputs
-            )
+                stream = client.beta.threads.runs.submit_tool_outputs(
+                    thread_id=thread.id,
+                    run_id=run.id,
+                    tool_outputs=tool_outputs,
+                    stream=True
+                )
+            elif event.event == 'thread.message.delta':
+                text = ''
+                for block in event.data.delta.content:
+                    if block.type == 'text' and block.text.value:
+                        text += block.text.value
+                yield dict(type='text', value=text)
 
     if new_thread:
         # update thread_id in item properties
@@ -199,9 +186,3 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             '.internal-ingress-thread-id': thread.id
         })
         print('Updated item with new thread_id:', updated)
-
-    return dict(
-        complete=False,
-        prev_messages=prev_messages,
-        message=reply
-    )

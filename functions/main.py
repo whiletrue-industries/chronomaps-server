@@ -47,4 +47,7 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
     # Message from request body:
     message = req.args.get('message')
     # Call the item ingress agent function
-    return item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message)
+    def generate():
+        for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+            yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
+    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
