@@ -122,7 +122,6 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         stream=True,
     )
 
-    reply = ''
     while stream:    
         for event in stream:
             if event.event == 'thread.run.completed':

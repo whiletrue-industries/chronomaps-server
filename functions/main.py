@@ -2,6 +2,7 @@ from firebase_admin import initialize_app, firestore, credentials
 from firebase_functions.params import SecretParam
 from firebase_functions import https_fn, options
 import json
+import time 
 
 # serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
 # cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
@@ -49,5 +50,6 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
     # Call the item ingress agent function
     def generate():
         for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+            time.sleep(1)
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
