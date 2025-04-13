@@ -88,12 +88,12 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     if error_code:
         yield dict(kind='error', message='Failed to fetch item', code=error_code)
         return
-    item_json = json.dumps(item, indent=2, ensure_ascii=False)
     
     new_thread = False
-    thread_id = item.get('.internal-ingress-thread-id')
+    thread_id = item.pop('.internal-ingress-thread-id', None)
     if not thread_id:
         new_thread = True
+        item_json = json.dumps(item, indent=2, ensure_ascii=False)
         thread = client.beta.threads.create()
         client.beta.threads.messages.create(
             thread_id=thread.id,
@@ -102,18 +102,26 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         )
     else:
         thread = client.beta.threads.retrieve(thread_id)
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role='user',
-            content=message,
-        )
+        if message != 'initial':
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role='user',
+                content=message,
+            )
         messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc')
+        role = None
+        idx = 0
         for message in messages:
             for content in message.content:
+                role = message.role
                 if content.type == 'text':
                     if 'DONE' in content.text.value[:10]:
                         continue
-                    yield dict(kind='message', role=message.role, content=content.text.value)
+                    yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
+                    idx += 1
+        if role == 'assistant':
+            yield dict(kind='status', status='completed')
+            return
         
     assistant_id = get_assistant_id()
     stream = client.beta.threads.runs.create(
