@@ -106,7 +106,7 @@ def get_image(filename, target_size):
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
     return out_img
 
-def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
+def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, tsne_out):
     # print('>>>', filename)
     info = dict(dim=out_dim, grid=[])
 
@@ -114,7 +114,6 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
     offset_x, offset_y = offset
     padding_x, padding_y = padding
     out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
-    print("Output:", out_dim, res, out.shape, out.dtype)
     positions = dict()
     for pos, record in zip(grid_jv, records[0:to_plot]):
         pos_x = round(pos[1] * (out_dim[0] - 1))# + img_ofs
@@ -122,6 +121,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
         pos = (int(pos_y), int(pos_x))
         positions[pos] = record
     for pos_x in range(out_dim[0]):
+        yield dict(msg=f'Creating image: {pos_x}/{out_dim[0]}')
         for pos_y in range(out_dim[1]):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
@@ -129,7 +129,6 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
                 image_url = record.get('screenshot_url')
             else:
                 image_url = None
-            print(f"Processing {pos}: {image_url}")
             img = get_image(image_url, res)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
@@ -145,7 +144,8 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
             if record is not None:
                 info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=record['_id']))
 
-    return out, info
+    tsne_out['image'] = out
+    tsne_out['info'] = info
 
 def create_tiles(prefix: str, image: Image):
     w, h = image.size
@@ -178,7 +178,8 @@ def create_tiles(prefix: str, image: Image):
                 buff = BytesIO()
                 target.save(buff, format='png', compress_level=0)
                 buff.seek(0)
-                blob = bucket.blob(f'tiles/{prefix}/{zoom}/{x}/{y}.png').upload_from_file(buff, content_type='image/png')
+                blob = bucket.blob(f'tiles/{prefix}/{zoom}/{x}/{y}.png')
+                blob.upload_from_file(buff, content_type='image/png')
                 blob.make_public()
                 # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
@@ -205,8 +206,10 @@ def cluster_screenshots(config):
         offset = (0, lambda x, _: PADDING * (x%2))
         padding = (0, PADDING)
         yield dict(msg=f'Creating image: {w}x{h} {res} {padding}')
-        image, info = create_tsne_image(grid, records, out_dim, 10000,
-                                        res, offset, padding)
+        tsne = {}
+        yield from create_tsne_image(grid, records, out_dim, 10000,
+                                     res, offset, padding, tsne)
+        image, info = tsne['image'], tsne['info']
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
