@@ -38,8 +38,8 @@ def load_records(config, records):
     params = dict(page_size=TO_PLOT, order_by='-metadata.created_at')    
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
-        requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key})
-        items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', headers={'Authorization': api_key}).json()
+        items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
+        yield dict(msg=f'Got {len(items)} items.')
         yield from ensure_embeddings(items, workspace, api_key)
         records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
@@ -190,7 +190,7 @@ def cluster_screenshots(config):
 
     records, activations = records, [rec['embedding'] for rec in records]
 
-    yield dict(msg='Generating 2D representation.')
+    yield dict(msg=f'Generating 2D representation from {len(records)} records.')
     X_2d = generate_tsne(activations, TO_PLOT, PERPLEXITY, TSNE_ITER)
     yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
     grid = calc_tsne_grid(X_2d, out_dim)
