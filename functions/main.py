@@ -16,7 +16,7 @@ from cluster_screenshots import cluster_screenshots as cluster_screenshots_fn
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 
 # Expose Flask app as a single Cloud Function
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post", "get", "put", "delete"]))
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post", "get", "put", "delete"]), memory=options.MemoryOption.MB_512)
 def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
     with chronomaps_api_app.request_context(req.environ):
         return chronomaps_api_app.full_dispatch_request()
@@ -55,7 +55,7 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'])
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.GB_32)
 def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
     # Workspace and api_key from query parameters:
