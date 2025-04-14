@@ -75,7 +75,7 @@ def get_items(workspace):
     items = db.collection(workspace).order_by(order_by, direction=direction).stream()
     items = (doc.to_dict() for doc in items)
     items_metadata = (
-        dict(**item.get("metadata", {}), _id=item.id) for item in items if item.id[0] != "."
+        dict(**item.get("metadata", {}), _id=item.id) for item in items if item['id'][0] != "."
     )
     paginated_items = list(islice(items_metadata, page * page_size, (page + 1) * page_size))
     return paginated_items, 200
