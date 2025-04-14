@@ -94,11 +94,15 @@ def get_item(workspace, item_id):
 def update_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
     item_key = flask.request.args.get("item-key")
-    authenticate(workspace, key, ["admin", "collaborate"])
+    if not item_key:
+        authenticate(workspace, key, ["admin"])
+    else:
+        authenticate(workspace, key, ["admin", "collaborate"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
-    if not item or item["key"] != item_key:
-        flask.abort(403, "Unauthorized")
+    if item_key:
+        if not item or item["key"] != item_key:
+            flask.abort(403, "Unauthorized")
     metadata = flask.request.json
     item["metadata"].update(metadata)
     item_ref.update({"metadata": item["metadata"]})
@@ -108,11 +112,15 @@ def update_item(workspace, item_id):
 def delete_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
     item_key = flask.request.args.get("item-key")
-    authenticate(workspace, key, ["admin", "collaborate"])
+    if not item_key:
+        authenticate(workspace, key, ["admin"])
+    else:
+        authenticate(workspace, key, ["admin", "collaborate"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
-    if not item or item["key"] != item_key:
-        flask.abort(403, "Unauthorized")
+    if item_key:
+        if not item or item["key"] != item_key:
+            flask.abort(403, "Unauthorized")
     item_ref.delete()
     return {"message": "Item deleted"}, 200
 
