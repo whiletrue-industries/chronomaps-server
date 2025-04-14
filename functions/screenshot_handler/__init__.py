@@ -77,6 +77,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
     response.raise_for_status()
     item_data = response.json()
     item_id = item_data['item_id']
+    item_key = item_data['item_key']
 
     # Save the image to the firebase storage 
     blob = bucket.blob(f'{workspace}/{item_id}/screenshot.jpg')
@@ -85,7 +86,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
 
     url = os.path.join(url, item_id)
     record = {'screenshot_url': blob.public_url}
-    params = dict(item_key=item_data['item_key'])
+    params = {'item-key': item_key}
     response = requests.post(url, json=record, headers={'Authorization': api_key}, params=params)
 
     record['item_id'] = item_id
