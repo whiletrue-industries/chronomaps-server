@@ -213,7 +213,7 @@ def cluster_screenshots(config):
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
-        yield from create_tiles(f'{config[0]}/0', image)
+        yield from create_tiles(f'{config[0][0]}/0', image)
         yield dict(msg='Processing complete.')
 
     except Exception as e:
