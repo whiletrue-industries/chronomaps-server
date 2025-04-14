@@ -142,7 +142,8 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
             h_range = pos_y * out_res_y + _offset_y
             w_range = pos_x * out_res_x + _offset_x
             out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
-            info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=record['_id']))
+            if record is not None:
+                info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=record['_id']))
 
     return out, info
 
