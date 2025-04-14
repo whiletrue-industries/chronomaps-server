@@ -203,6 +203,7 @@ def cluster_screenshots(config):
         res = (int(SIDE*w/dim), int(SIDE*h/dim))
         offset = (0, lambda x, _: PADDING * (x%2))
         padding = (0, PADDING)
+        yield dict(msg=f'Creating image: {w}x{h} {res} {padding}')
         image, info = create_tsne_image(grid, records, out_dim, 10000,
                                         res, offset, padding)
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
@@ -213,3 +214,4 @@ def cluster_screenshots(config):
 
     except Exception as e:
         yield dict(msg="Error generating image:", error=str(e))
+        raise
