@@ -12,6 +12,7 @@ import requests
 
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
+AUTOMATIC_INSTRUCTIONS = Path(__file__).with_name('AUTOMATIC_SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 client = OpenAI(api_key=API_KEY)
 
 bucket = storage.bucket()
@@ -19,7 +20,7 @@ bucket = storage.bucket()
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode("utf-8")
 
-def screenshot_handler(image_bytes, workspace, api_key):
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False):
     base64_image = encode_image(image_bytes)
 
     completion = client.chat.completions.create(
@@ -28,7 +29,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
             {
                 "role": "user",
                 "content": [
-                    { "type": "text", "text": INSTRUCTIONS },
+                    { "type": "text", "text": INSTRUCTIONS if not automatic else AUTOMATIC_INSTRUCTIONS },
                     {
                         "type": "image_url",
                         "image_url": {
@@ -64,7 +65,10 @@ def screenshot_handler(image_bytes, workspace, api_key):
             future_scenario_description=content['future_scenario_description'],
             future_scenario_topics=content['future_scenario_topics'],
             detected_language=content['detected_language'],
-            created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+            created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            automatic=automatic,
+            plausibility=content.get('plausibility'),
+            favorable_future=content.get('favorable_future'),            
         )
 
     # Create new item in Chronomaps API
@@ -92,5 +96,6 @@ def screenshot_handler(image_bytes, workspace, api_key):
 
     record['item_id'] = item_id
     record['item_key'] = item_data['item_key']
+    record['automatic'] = automatic
     
     return record
