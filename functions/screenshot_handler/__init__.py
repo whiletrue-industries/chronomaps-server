@@ -68,7 +68,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False):
             created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             automatic=automatic,
             plausibility=content.get('plausibility'),
-            favorable_future=content.get('favorable_future'),            
+            favorable_future=content.get('favorable_future'),
         )
 
     # Create new item in Chronomaps API

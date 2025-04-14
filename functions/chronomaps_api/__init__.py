@@ -65,11 +65,19 @@ def get_items(workspace):
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin", "collaborate", "view"])
     page = flask.request.args.get("page", 0, type=int)
-    items = db.collection(workspace).stream()
+    page_size = flask.request.args.get("page_size", 10, type=int)
+    order_by = flask.request.args.get("order_by", "-created_at")
+    direction = firestore.Query.ASCENDING
+    if order_by.startswith("-"):
+        order_by = order_by[1:]
+        direction = firestore.Query.DESCENDING
+    order_by = 'metadata.' + order_by
+    items = db.collection(workspace).order_by(order_by, direction=direction).stream()
+    items = (doc.to_dict() for doc in items)
     items_metadata = (
-        item.to_dict()["metadata"] for item in items if item.id != ".config"
+        dict(**item.get("metadata", {}), _id=item.id) for item in items if item.id[0] != "."
     )
-    paginated_items = list(islice(items_metadata, page * 10, (page + 1) * 10))
+    paginated_items = list(islice(items_metadata, page * page_size, (page + 1) * page_size))
     return paginated_items, 200
 
 @app.get("/<workspace>/<item_id>")
