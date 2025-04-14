@@ -15,7 +15,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   item_ingress_agent:
-    availableMemoryMb: null
+    availableMemoryMb: 512
     concurrency: null
     entryPoint: item_ingress_agent
     httpsTrigger: {}
@@ -32,7 +32,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   screenshot_handler:
-    availableMemoryMb: null
+    availableMemoryMb: 512
     concurrency: null
     entryPoint: screenshot_handler
     httpsTrigger: {}
