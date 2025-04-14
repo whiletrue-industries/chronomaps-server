@@ -48,6 +48,23 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: null
+  cluster_screenshots:
+    availableMemoryMb: null
+    concurrency: null
+    entryPoint: cluster_screenshots
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: CHRONOMAPS_API_URL
+    serviceAccountEmail: null
+    timeoutSeconds: null
 params:
 - name: OPENAI_API_KEY
   type: secret
