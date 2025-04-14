@@ -35,7 +35,7 @@ SIDE = 1000
 PADDING = int(0.285 * SIDE)
 
 def load_records(config, records):
-    params = dict(page_size=TO_PLOT, order_by='-metadata.created_at')    
+    params = dict(page_size=TO_PLOT, order_by='-created_at')
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
