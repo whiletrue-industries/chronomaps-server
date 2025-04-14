@@ -88,6 +88,7 @@ def screenshot_handler(image_bytes, workspace, api_key):
     record = {'screenshot_url': blob.public_url}
     params = {'item-key': item_key}
     response = requests.post(url, json=record, headers={'Authorization': api_key}, params=params)
+    print('RESPONSE:', response.status_code, response.text)
 
     record['item_id'] = item_id
     record['item_key'] = item_data['item_key']
