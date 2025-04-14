@@ -1,5 +1,6 @@
 import json
 import concurrent.futures
+from pathlib import Path
 import requests
 from io import BytesIO
 import numpy as np
@@ -82,7 +83,7 @@ def get_image(filename, target_size):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
-        filename = 'empty-space.png'
+        filename = Path(__file__).with_name('empty-space.png')
         img = Image.open(filename)
         _image = Image.new("RGBA", img.size, "WHITE") 
         _image.paste(img, (0, 0), img)         
