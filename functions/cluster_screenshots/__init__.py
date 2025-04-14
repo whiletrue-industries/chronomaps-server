@@ -90,7 +90,7 @@ def get_image(filename, target_size):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
-        img = Image.open(f'sample/affb/{filename}')
+        img = Image.open(requests.get(filename, stream=True).raw)
         ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
         # resize the image by ratio:
         img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
@@ -126,11 +126,11 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
             if record is not None:
-                filename = record['filename']
+                image_url = record.get('screenshot_url')
             else:
-                filename = None
-            print(f"Processing {pos}: {filename}")
-            img = get_image(filename, res)
+                image_url = None
+            print(f"Processing {pos}: {image_url}")
+            img = get_image(image_url, res)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:
@@ -142,7 +142,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding):
             h_range = pos_y * out_res_y + _offset_y
             w_range = pos_x * out_res_x + _offset_x
             out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
-            info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=filename))
+            info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=record['_id']))
 
     return out, info
 
