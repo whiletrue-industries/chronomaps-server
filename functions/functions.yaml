@@ -1,6 +1,6 @@
 endpoints:
   chronomaps_api:
-    availableMemoryMb: null
+    availableMemoryMb: 512
     concurrency: null
     entryPoint: chronomaps_api
     httpsTrigger: {}
@@ -49,7 +49,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   cluster_screenshots:
-    availableMemoryMb: null
+    availableMemoryMb: 32768
     concurrency: null
     entryPoint: cluster_screenshots
     httpsTrigger: {}
@@ -64,7 +64,7 @@ endpoints:
     - key: OPENAI_API_KEY
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
-    timeoutSeconds: null
+    timeoutSeconds: 1800
 params:
 - name: OPENAI_API_KEY
   type: secret
