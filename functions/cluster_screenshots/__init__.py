@@ -38,13 +38,13 @@ def load_records(config, records):
     params = dict(page_size=TO_PLOT, order_by='-metadata.created_at')    
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
-        requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', headers={'Authorization': api_key}, params=params)
+        requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key})
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', headers={'Authorization': api_key}).json()
-        yield from ensure_embeddings(items, api_key)
+        yield from ensure_embeddings(items, workspace, api_key)
         records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
-def ensure_embeddings(records, api_key):
+def ensure_embeddings(records, workspace, api_key):
     openai = OpenAI(api_key=API_KEY)
     for i, record in enumerate(records):
         if i % 100 == 0:
@@ -59,7 +59,7 @@ def ensure_embeddings(records, api_key):
         embedding = completion.data[0].embedding
         record['embedding'] = embedding
         item_id = record['_id']
-        requests.put(f'{CHRONOMAPS_API_URL}/{record["workspace"]}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
+        requests.put(f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
 
 def generate_tsne(activations, to_plot, perplexity=50, tsne_iter=5000):
     tsne = TSNE(perplexity=perplexity, n_components=2, init='random', n_iter=tsne_iter)
