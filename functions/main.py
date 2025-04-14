@@ -11,6 +11,7 @@ initialize_app()
 from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
+from cluster_screenshots import cluster_screenshots as cluster_screenshots_fn
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 
@@ -51,5 +52,17 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
     # Call the item ingress agent function
     def generate():
         for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+            yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
+    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'])
+def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
+    # Get the request data
+    # Workspace and api_key from query parameters:
+    config = req.args.get('config')
+    if not config:
+        return https_fn.Response("Missing config", status=400)
+    def generate():
+        for bit in cluster_screenshots_fn(config):
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')

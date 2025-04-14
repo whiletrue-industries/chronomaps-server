@@ -2,3 +2,11 @@ firebase_functions~=0.1.0
 flask
 openai
 requests
+numpy
+scikit-learn
+scipy
+Pillow
+boto3
+scikit-image
+Pillow
+lapjv
