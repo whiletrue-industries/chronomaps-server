@@ -73,7 +73,7 @@ def get_items(workspace):
         direction = firestore.Query.DESCENDING
     order_by = 'metadata.' + order_by
     items = db.collection(workspace).order_by(order_by, direction=direction).stream()
-    items = (doc.to_dict() for doc in items)
+    items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
     items_metadata = (
         dict(**item.get("metadata", {}), _id=item.id) for item in items if item['id'][0] != "."
     )
