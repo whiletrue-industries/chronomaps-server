@@ -62,7 +62,10 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     config = req.args.get('config')
     if not config:
         return https_fn.Response("Missing config", status=400)
+    start = time.time()
     def generate():
         for bit in cluster_screenshots_fn(config):
+            delta = int(time.time() - start)
+            bit = [delta, bit]
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')

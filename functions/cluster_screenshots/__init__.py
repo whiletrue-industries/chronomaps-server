@@ -168,6 +168,7 @@ def create_tiles(prefix: str, image: Image):
             w, h = image.size
         for x in range(_num_tiles):
             # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
+            yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles}")
             for y in range(_num_tiles):
                 target = Image.new('RGB', (tile_size, tile_size), (255, 255, 255))
                 left = min(x * tile_size, w)
