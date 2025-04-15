@@ -34,8 +34,9 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     if not image_file:
         return https_fn.Response("Missing image file", status=400)
     image_bytes = image_file.read()
+    content_type = image_file.content_type
     automatic = req.args.get('automatic', 'false').lower() == 'true'
-    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic)
+    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type)
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'])
 def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:

@@ -148,3 +148,14 @@ def delete_workspace(workspace):
     for doc in docs:
         doc.reference.delete()
     return {"message": "Workspace deleted"}, 200
+
+@app.delete("/<workspace>/items")
+def delete_items(workspace):
+    key = flask.request.headers.get("Authorization")
+    authenticate(workspace, key, ["admin"])
+    items_ref = db.collection(workspace)
+    docs = items_ref.stream()
+    for doc in docs:
+        if doc.id[0] != ".":
+            doc.reference.delete()
+    return {"message": "Items deleted"}, 200

@@ -20,7 +20,7 @@ bucket = storage.bucket()
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode("utf-8")
 
-def screenshot_handler(image_bytes, workspace, api_key, automatic=False):
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg'):
     base64_image = encode_image(image_bytes)
 
     completion = client.chat.completions.create(
@@ -33,7 +33,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False):
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}",
+                            "url": f"data:{image_content_type};base64,{base64_image}",
                         },
                     },
                 ],
@@ -84,8 +84,9 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False):
     item_key = item_data['item_key']
 
     # Save the image to the firebase storage 
-    blob = bucket.blob(f'{workspace}/{item_id}/screenshot.jpg')
-    blob.upload_from_string(image_bytes, content_type='image/jpeg')
+    suffix = image_content_type.split('/')[1]
+    blob = bucket.blob(f'{workspace}/{item_id}/screenshot.{suffix}')
+    blob.upload_from_string(image_bytes, content_type=image_content_type)
     blob.make_public()
 
     url = os.path.join(url, item_id)
