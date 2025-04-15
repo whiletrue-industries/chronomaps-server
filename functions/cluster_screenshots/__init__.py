@@ -147,7 +147,13 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, 
     tsne_out['image'] = out
     tsne_out['info'] = info
 
-def upload_image(target, prefix, zoom, x, y):
+def upload_image(image, tile_size, w, h, prefix, zoom, x, y):
+    target = Image.new('RGB', (tile_size, tile_size), (255, 255, 255))
+    left = min(x * tile_size, w)
+    upper = min(y * tile_size, h)
+    right = min(left + tile_size, w)
+    lower = min(upper + tile_size, h)
+    target.paste(image.crop((left, upper, right, lower)), (0, 0))
     buff = BytesIO()
     target.save(buff, format='png', compress_level=0)
     buff.seek(0)
@@ -182,13 +188,7 @@ def create_tiles(prefix: str, image: Image):
                 # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
                 yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles}")
                 for y in range(_num_tiles):
-                    target = Image.new('RGB', (tile_size, tile_size), (255, 255, 255))
-                    left = min(x * tile_size, w)
-                    upper = min(y * tile_size, h)
-                    right = min(left + tile_size, w)
-                    lower = min(upper + tile_size, h)
-                    target.paste(image.crop((left, upper, right, lower)), (0, 0))
-                    executor.submit(upload_image, target, prefix, zoom, x, y)
+                    executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y)
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
 def cluster_screenshots(config):
