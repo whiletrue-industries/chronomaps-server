@@ -1,5 +1,6 @@
 import json
 import concurrent.futures
+import queue
 from pathlib import Path
 import requests
 from io import BytesIO
@@ -34,6 +35,12 @@ out_dim = (OUT_DIM_X, OUT_DIM_Y)
 TO_PLOT = int(out_dim[0] * out_dim[1] * 0.75)
 SIDE = 1000
 PADDING = int(0.285 * SIDE)
+
+class ThreadPoolExecutorWithQueueSizeLimit(concurrent.futures.ThreadPoolExecutor):
+    def __init__(self, maxsize=32, *args, **kwargs):
+        super().__init__(*args, max_workers=32, **kwargs)
+        self._work_queue = queue.Queue(maxsize=maxsize)
+
 
 def load_records(config, records):
     params = dict(page_size=TO_PLOT, order_by='-created_at')
@@ -175,7 +182,7 @@ def create_tiles(prefix: str, image: Image):
     min_zoom = 8 - zoom_level
     yield dict(msg=f"Tiles: {prefix} ({w}x{h}) -> {num_tiles}x{num_tiles} ({tile_size}px) {zoom_level} levels")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+    with ThreadPoolExecutorWithQueueSizeLimit() as executor:
         for z in range(zoom_level):
             zoom = max_zoom - z
             skip = 2**z
