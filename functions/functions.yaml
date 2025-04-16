@@ -49,8 +49,8 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   cluster_screenshots:
-    availableMemoryMb: 8192
-    cpu: 2
+    availableMemoryMb: 12288
+    cpu: 4
     concurrency: null
     entryPoint: cluster_screenshots
     httpsTrigger: {}
