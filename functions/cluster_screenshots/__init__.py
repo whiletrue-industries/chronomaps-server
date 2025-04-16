@@ -183,28 +183,26 @@ def upload_image(image, tile_size, w, h, prefix, zoom, x, y):
 
 def create_tiles(prefix: str, image: Image):
     w, h = image.size
-    max_size = max(w, h)
     tile_size = 256
-    num_tiles = math.ceil(max_size / tile_size)
-    zoom_level = math.ceil(math.log2(num_tiles))
-    num_tiles = 2**zoom_level
+    num_tiles = math.ceil(w / tile_size), math.ceil(h / tile_size)
+    zoom_level = math.ceil(math.log2(max(num_tiles)))
     max_zoom = 8
     min_zoom = 8 - zoom_level
-    yield dict(msg=f"Tiles: {prefix} ({w}x{h}) -> {num_tiles}x{num_tiles} ({tile_size}px) {zoom_level} levels")
+    yield dict(msg=f"Tiles: {prefix} ({w}x{h}) -> {num_tiles[0]}x{num_tiles[1]} ({tile_size}px) {zoom_level} zoom levels")
 
     with ThreadPoolExecutorWithQueueSizeLimit() as executor:
         for z in range(zoom_level):
             zoom = max_zoom - z
             skip = 2**z
-            _num_tiles = num_tiles // skip
-            yield dict(msg=f"Zoom {zoom}: {_num_tiles}x{_num_tiles} ({tile_size}px)")
+            _num_tiles = tuple(math.ceil(n / skip) for n in num_tiles)
+            yield dict(msg=f"Zoom {zoom}: {_num_tiles[0]}x{_num_tiles[1]} ({tile_size}px)")
             if skip > 1:
                 image = image.resize((w // 2, h // 2), Image.Resampling.LANCZOS)
                 w, h = image.size
             for x in range(_num_tiles):
                 # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
-                yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles}")
-                for y in range(_num_tiles):
+                yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles[0]}")
+                for y in range(_num_tiles[1]):
                     executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y)
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
