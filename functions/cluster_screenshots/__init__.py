@@ -88,8 +88,22 @@ def calc_tsne_grid(X_2d, out_dim):
     grid_jv = grid[col_asses]
     return grid_jv
 
-def get_image(filename, target_size):
+def get_image(record, target_size):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
+    if record is not None:
+        filename = record.get('screenshot_url')
+        rotate = record.get('plausibility') or 100
+        rotate = (100 - rotate) / 100 * 32
+        favorable_future = record.get('favorable_future')
+        sign = 0
+        if favorable_future == 'yes':
+            sign = 1
+        elif favorable_future == 'no':
+            sign = -1
+        rotate = sign * rotate
+    else:
+        filename = None
+        rotate = random.randint(0, 64) - 32
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
         filename = Path(__file__).with_name('empty-space.png')
@@ -107,7 +121,6 @@ def get_image(filename, target_size):
         img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
                         img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-    rotate = random.randint(0, 64) - 32
     img = img.rotate(rotate, expand=True, fillcolor=(255, 255, 255))
     out_img = Image.new('RGB', target_size, (255, 255, 255))
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
@@ -134,11 +147,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, 
         for pos_y in range(out_dim[1]):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
-            if record is not None:
-                image_url = record.get('screenshot_url')
-            else:
-                image_url = None
-            img = get_image(image_url, res)
+            img = get_image(record, res)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:
