@@ -356,7 +356,7 @@ def cluster_screenshots(config):
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
         prefix = f'{config[0][0]}/0'
-        yield from create_tiles(prefix, image, info)
+        yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 
         yield from find_clusters(records, X_2d, info)
