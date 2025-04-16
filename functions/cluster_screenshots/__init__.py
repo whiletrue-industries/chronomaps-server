@@ -129,7 +129,7 @@ def get_image(record, target_size):
     metadata = dict(rotate=rotate, favorable_future=sign)
     return out_img, metadata
 
-def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, tsne_out):
+def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, tsne_out):
     # print('>>>', filename)
 
     out_res_x, out_res_y = res
@@ -141,7 +141,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, 
 
     out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
     positions = dict()
-    for pos, record in zip(grid_jv, records[0:to_plot]):
+    for pos, record in zip(grid_jv, records):
         pos_x = round(pos[1] * (out_dim[0] - 1))# + img_ofs
         pos_y = round(pos[0] * (out_dim[1] - 1))# + img_ofs
         pos = (int(pos_y), int(pos_x))
@@ -235,7 +235,7 @@ List of submission taglines:
 
 def find_clusters(records, tsne, info):
     client = OpenAI(api_key=API_KEY)
-    clustering = AgglomerativeClustering(n_clusters=10, metric='cosine', distance_threshold=None, linkage='complete')
+    clustering = AgglomerativeClustering(n_clusters=10, metric='euclidean', distance_threshold=None, linkage='ward')
     clustering.fit(tsne)
     labels = clustering.labels_
     all_labels = set(labels)
@@ -337,6 +337,7 @@ def cluster_screenshots(config):
     X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
     yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
     grid = calc_tsne_grid(X_2d, out_dim)
+    grid = grid[:len(records)]
     yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
 
     try:
@@ -350,8 +351,7 @@ def cluster_screenshots(config):
         padding = (0, padding_y)
         yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
         tsne = {}
-        yield from create_tsne_image(grid, records, out_dim, 10000,
-                                     res, offset, padding, tsne)
+        yield from create_tsne_image(grid, records, out_dim, res, offset, padding, tsne)
         image, info = tsne['image'], tsne['info']
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
