@@ -199,7 +199,7 @@ def create_tiles(prefix: str, image: Image):
             if skip > 1:
                 image = image.resize((w // 2, h // 2), Image.Resampling.LANCZOS)
                 w, h = image.size
-            for x in range(_num_tiles):
+            for x in range(_num_tiles[0]):
                 # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
                 yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles[0]}")
                 for y in range(_num_tiles[1]):
