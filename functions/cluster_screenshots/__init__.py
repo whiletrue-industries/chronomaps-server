@@ -363,10 +363,12 @@ def cluster_screenshots(config):
 
         convert_all_coords(info)
 
-        blob = bucket.blob(f'{prefix}/config.json')
+        blob = bucket.blob(f'tiles/{prefix}/config.json')
         blob.cache_control = 'public, max-age=600'
         blob.upload_from_string(json.dumps(info), content_type='application/json')
         blob.make_public()
+
+        yield dict(msg=f'Config uploaded: {blob.public_url}')
     except Exception as e:
         yield dict(msg="Error generating image:", error=str(e))
         raise
