@@ -337,6 +337,7 @@ def cluster_screenshots(config):
     X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
     yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
     grid = calc_tsne_grid(X_2d, out_dim)
+    yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
 
     try:
         # w, h = 530, 1000
@@ -359,7 +360,7 @@ def cluster_screenshots(config):
         yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 
-        yield from find_clusters(records, X_2d, info)
+        yield from find_clusters(records, grid, info)
 
         convert_all_coords(info)
 
