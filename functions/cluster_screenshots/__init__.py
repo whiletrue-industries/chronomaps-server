@@ -1,4 +1,3 @@
-import json
 import concurrent.futures
 import queue
 from pathlib import Path
@@ -15,6 +14,7 @@ from PIL import Image
 from skimage import transform
 from scipy.ndimage import gaussian_filter
 from openai import OpenAI
+from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
 
@@ -35,6 +35,8 @@ out_dim = (OUT_DIM_X, OUT_DIM_Y)
 TO_PLOT = int(out_dim[0] * out_dim[1] * 0.75)
 SIDE = 1000
 PADDING = int(0.285 * SIDE)
+
+EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
 
 class ThreadPoolExecutorWithQueueSizeLimit(concurrent.futures.ThreadPoolExecutor):
     def __init__(self, maxsize=32, *args, **kwargs):
@@ -69,9 +71,9 @@ def ensure_embeddings(records, workspace, api_key):
         item_id = record['_id']
         requests.put(f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
 
-def generate_tsne(activations, to_plot, perplexity=50, tsne_iter=5000):
+def generate_tsne(activations, perplexity=50, tsne_iter=5000):
     tsne = TSNE(perplexity=perplexity, n_components=2, init='random', n_iter=tsne_iter)
-    X_2d = tsne.fit_transform(np.array(activations)[0:to_plot,:])
+    X_2d = tsne.fit_transform(np.array(activations))
     X_2d -= X_2d.min(axis=0)
     X_2d /= X_2d.max(axis=0)
     return X_2d
@@ -198,6 +200,54 @@ def create_tiles(prefix: str, image: Image):
                     executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y)
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
+def extract_cluster_title(client, taglines):
+    prompt = f'''{EXTRACT_TITLE_INSTRUCTIONS}
+
+List of submission taglines:
+- {"\n- ".join(taglines)}
+'''
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": prompt },
+                ],
+            }
+        ],
+        temperature=0.0000001
+    )
+    return completion.choices[0].message.content
+
+def find_clusters(records, tsne):
+    client = OpenAI(api_key=API_KEY)
+    clustering = AgglomerativeClustering(n_clusters=10, metric='cosine', distance_threshold=None, linkage='complete')
+    clustering.fit(tsne)
+    labels = clustering.labels_
+    num_clusters = len(set(labels))
+    print(f'num_clusters: {num_clusters}')
+    label_counts = []
+    for _label in range(num_clusters):
+        cluster_indexes = [idx for idx, label in enumerate(labels) if label == _label]        
+        cluster_members = list(map(lambda x: records[x], cluster_indexes))
+        label_counts.append((_label, len(cluster_members), cluster_indexes, cluster_members))
+
+    label_counts.sort(key=lambda x: x[1], reverse=True)
+    total = 0
+
+    for label, count, indexes, members in label_counts:
+        yield dict(msg=f'Cluster {label} size: {len(members)}, {len(members) / len(records) * 100:.2f}% of total')
+        taglines = [member['future_scenario_description'] for member in cluster_members]
+
+        title = extract_cluster_title(client, taglines)
+
+        yield dict(msg=f'Cluster {label}: #{len(members)}, {title}')
+
+        total += len(members)
+        if total > 0.85 * len(records):
+            break
+
 def cluster_screenshots(config):
     config = config.split(';')
     config = [c.split(':') for c in config]
@@ -209,7 +259,7 @@ def cluster_screenshots(config):
     records, activations = records, [rec['embedding'] for rec in records]
 
     yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-    X_2d = generate_tsne(activations, TO_PLOT, PERPLEXITY, TSNE_ITER)
+    X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
     yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
     grid = calc_tsne_grid(X_2d, out_dim)
 
@@ -234,3 +284,5 @@ def cluster_screenshots(config):
     except Exception as e:
         yield dict(msg="Error generating image:", error=str(e))
         raise
+
+    yield from find_clusters(records, X_2d)
