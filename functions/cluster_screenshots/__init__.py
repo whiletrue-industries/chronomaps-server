@@ -1,19 +1,19 @@
+import random
+import math
 import concurrent.futures
 import queue
+import json
 from pathlib import Path
-import requests
 from io import BytesIO
+
+import requests
 import numpy as np
+from PIL import Image
+from openai import OpenAI
+
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
 from lapjv import lapjv
-import random
-import math
-import os
-from PIL import Image
-from skimage import transform
-from scipy.ndimage import gaussian_filter
-from openai import OpenAI
 from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
@@ -125,7 +125,8 @@ def get_image(record, target_size):
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    return out_img
+    metadata = dict(rotate=rotate, favorable_future=sign)
+    return out_img, metadata
 
 def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, tsne_out):
     # print('>>>', filename)
@@ -146,7 +147,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, 
         for pos_y in range(out_dim[1]):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
-            img = get_image(record, res)
+            img, metadata = get_image(record, res)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:
@@ -159,7 +160,7 @@ def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, 
             w_range = pos_x * out_res_x + _offset_x
             out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
             if record is not None:
-                info['grid'].append(dict(pos=dict(x=pos_x, y=pos_y), item=record['_id']))
+                info['grid'].append(dict(pos=[pos_x, pos_y], id=record['_id'], metadata=metadata))
 
     tsne_out['image'] = out
     tsne_out['info'] = info
@@ -175,6 +176,7 @@ def upload_image(image, tile_size, w, h, prefix, zoom, x, y):
     target.save(buff, format='png', compress_level=0)
     buff.seek(0)
     blob = bucket.blob(f'tiles/{prefix}/{zoom}/{x}/{y}.png')
+    blob.cache_control = 'public, max-age=600'
     blob.upload_from_file(buff, content_type='image/png')
     blob.make_public()
     del target
@@ -227,7 +229,7 @@ List of submission taglines:
     # print(f'PPPP\n{prompt}\n\n{completion.choices[0].message.content}')
     return completion.choices[0].message.content
 
-def find_clusters(records, tsne):
+def find_clusters(records, tsne, info):
     client = OpenAI(api_key=API_KEY)
     clustering = AgglomerativeClustering(n_clusters=10, metric='cosine', distance_threshold=None, linkage='complete')
     clustering.fit(tsne)
@@ -236,6 +238,14 @@ def find_clusters(records, tsne):
     num_clusters = len(all_labels)
     print(f'num_clusters: {num_clusters}')
     label_counts = []
+    record_positions = dict(
+        (i['id'], i['pos'])
+        for i in info['grid']
+    )
+    records_rotations = dict(
+        (i['id'], i['metadata']['rotate'])
+        for i in info['grid']
+    )
     for _label in all_labels:
         cluster_indexes = [idx for idx, label in enumerate(labels) if label == _label]        
         cluster_members = list(map(lambda x: records[x], cluster_indexes))
@@ -243,18 +253,40 @@ def find_clusters(records, tsne):
 
     label_counts.sort(key=lambda x: x[1], reverse=True)
     total = 0
+    titles = []
 
     for label, count, indexes, members in label_counts:
         yield dict(msg=f'Cluster {label} size: {count}, {count / len(records) * 100:.2f}% of total')
         taglines = [member['future_scenario_description'] for member in members]
 
         title = extract_cluster_title(client, taglines)
+        cluster_positions = [
+            record_positions[member['_id']]
+            for member in members
+        ]
+        cluster_positions_bounds = [
+            min([pos[0] for pos in cluster_positions]), min([pos[1] for pos in cluster_positions]),
+            max([pos[0] for pos in cluster_positions]), max([pos[1] for pos in cluster_positions])
+        ]
+        cluster_rotations = [
+            records_rotations[member['_id']]
+            for member in members
+        ]
+        cluster_average_rotation = sum(cluster_rotations) / len(cluster_rotations)
+        titles.append(
+            dict(
+                title=title,
+                bounds=cluster_positions_bounds,
+                average_rotation=cluster_average_rotation,
+            )
+        )
 
         yield dict(msg=f'Cluster {label}: #{count}, {title}')
 
         total += count
         if total > 0.85 * len(records):
             break
+    info['clusters'] = titles
 
 def get_side(ratio, dim):
     i = 0
@@ -297,11 +329,17 @@ def cluster_screenshots(config):
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
-        yield from create_tiles(f'{config[0][0]}/0', image)
+        prefix = f'{config[0][0]}/0'
+        yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 
+        yield from find_clusters(records, X_2d, info)
+
+        blob = bucket.blob(f'{prefix}/config.json')
+        blob.cache_control = 'public, max-age=600'
+        blob.upload_from_string(json.dumps(info), content_type='application/json')
+        blob.make_public()
     except Exception as e:
         yield dict(msg="Error generating image:", error=str(e))
         raise
 
-    yield from find_clusters(records, X_2d)
