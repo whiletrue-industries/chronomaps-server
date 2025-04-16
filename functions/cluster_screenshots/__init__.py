@@ -286,7 +286,7 @@ def cluster_screenshots(config):
         # w, h = 530, 1000
         w, h = ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0], ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1]
         dim = max(w, h)
-        side = get_side(w/dim, OUT_DIM_X)
+        side = 1000 # get_side(w/dim, OUT_DIM_X)
         res = (int(side*w/dim), int(side*h/dim))
         padding_y = int(h * PADDING_RATIO)
         offset = (0, lambda x, _: padding_y * (x%2))
