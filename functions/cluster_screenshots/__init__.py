@@ -103,6 +103,7 @@ def get_image(record, target_size):
     else:
         filename = None
         rotate = random.randint(0, 64) - 32
+        sign = 0
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
         filename = Path(__file__).with_name('empty-space.png')
