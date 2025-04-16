@@ -130,11 +130,14 @@ def get_image(record, target_size):
 
 def create_tsne_image(grid_jv, records, out_dim, to_plot, res, offset, padding, tsne_out):
     # print('>>>', filename)
-    info = dict(dim=out_dim, grid=[])
 
     out_res_x, out_res_y = res
     offset_x, offset_y = offset
     padding_x, padding_y = padding
+
+    info = dict(dim=out_dim, grid=[])
+    info['conversion_ratio'] = (out_res_x / 256, out_res_y / 256)
+
     out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
     positions = dict()
     for pos, record in zip(grid_jv, records[0:to_plot]):
@@ -265,8 +268,8 @@ def find_clusters(records, tsne, info):
             for member in members
         ]
         cluster_positions_bounds = [
-            min([pos[0] for pos in cluster_positions]), min([pos[1] for pos in cluster_positions]),
-            max([pos[0] for pos in cluster_positions]), max([pos[1] for pos in cluster_positions])
+            [min([pos[0] for pos in cluster_positions]) - 0.5, min([pos[1] for pos in cluster_positions]) - 0.5],
+            [max([pos[0] for pos in cluster_positions]) + 0.5, max([pos[1] for pos in cluster_positions]) + 0.5]
         ]
         cluster_rotations = [
             records_rotations[member['_id']]
@@ -296,6 +299,28 @@ def get_side(ratio, dim):
         if side >= 1000:
             return side
         i += 1
+
+def convert_coords(coords, conversion_ratio):
+    x, y = coords
+    conv_x, conv_y = conversion_ratio
+    x = x * conv_x
+    y = -y * conv_y
+    return x, y
+
+def convert_all_coords(info):
+    conversion_ratio = info['conversion_ratio']
+    for cluster in info['clusters']:
+        cluster['geo_bounds'] = [
+            convert_coords(cluster['bounds'][0], conversion_ratio),
+            convert_coords(cluster['bounds'][1], conversion_ratio)
+        ]
+    for grid in info['grid']:
+        pos = grid['pos'][0] + 0.5, grid['pos'][1] + 0.5
+        grid['geo_pos'] = convert_coords(pos, conversion_ratio)
+        grid['geo_bounds'] = [
+            convert_coords([grid['pos'][0], grid['pos'][1]], conversion_ratio),
+            convert_coords([grid['pos'][0] + 1, grid['pos'][1] + 1], conversion_ratio)
+        ]
 
 def cluster_screenshots(config):
     config = config.split(';')
@@ -330,10 +355,12 @@ def cluster_screenshots(config):
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
         prefix = f'{config[0][0]}/0'
-        yield from create_tiles(prefix, image)
+        yield from create_tiles(prefix, image, info)
         yield dict(msg='Processing complete.')
 
         yield from find_clusters(records, X_2d, info)
+
+        convert_all_coords(info)
 
         blob = bucket.blob(f'{prefix}/config.json')
         blob.cache_control = 'public, max-age=600'
