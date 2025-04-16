@@ -269,8 +269,8 @@ def find_clusters(records, tsne, info):
             for member in members
         ]
         cluster_positions_bounds = [
-            [min([pos[0] for pos in cluster_positions]) - 0.5, min([pos[1] for pos in cluster_positions]) - 0.5],
-            [max([pos[0] for pos in cluster_positions]) + 0.5, max([pos[1] for pos in cluster_positions]) + 0.5]
+            [min([pos[0] for pos in cluster_positions]) , min([pos[1] for pos in cluster_positions]) ],
+            [max([pos[0] for pos in cluster_positions]) + 1, max([pos[1] for pos in cluster_positions]) + 1]
         ]
         cluster_rotations = [
             records_rotations[member['_id']]
