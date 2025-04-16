@@ -49,7 +49,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   cluster_screenshots:
-    availableMemoryMb: 12288
+    availableMemoryMb: 16384
     cpu: 4
     concurrency: null
     entryPoint: cluster_screenshots
