@@ -33,8 +33,7 @@ OUT_RATIO = 9/16
 OUT_DIM_Y = int(math.ceil(OUT_DIM_X * ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0] * OUT_RATIO / (ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1])))
 out_dim = (OUT_DIM_X, OUT_DIM_Y)
 TO_PLOT = int(out_dim[0] * out_dim[1] * 0.75)
-SIDE = 1000
-PADDING = int(0.285 * SIDE)
+PADDING_RATIO = 0.285
 
 EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
 
@@ -227,6 +226,7 @@ List of submission taglines:
         ],
         temperature=0.0000001
     )
+    # print(f'PPPP\n{prompt}\n\n{completion.choices[0].message.content}')
     return completion.choices[0].message.content
 
 def find_clusters(records, tsne):
@@ -234,10 +234,11 @@ def find_clusters(records, tsne):
     clustering = AgglomerativeClustering(n_clusters=10, metric='cosine', distance_threshold=None, linkage='complete')
     clustering.fit(tsne)
     labels = clustering.labels_
-    num_clusters = len(set(labels))
+    all_labels = set(labels)
+    num_clusters = len(all_labels)
     print(f'num_clusters: {num_clusters}')
     label_counts = []
-    for _label in range(num_clusters):
+    for _label in all_labels:
         cluster_indexes = [idx for idx, label in enumerate(labels) if label == _label]        
         cluster_members = list(map(lambda x: records[x], cluster_indexes))
         label_counts.append((_label, len(cluster_members), cluster_indexes, cluster_members))
@@ -246,16 +247,25 @@ def find_clusters(records, tsne):
     total = 0
 
     for label, count, indexes, members in label_counts:
-        yield dict(msg=f'Cluster {label} size: {len(members)}, {len(members) / len(records) * 100:.2f}% of total')
-        taglines = [member['future_scenario_description'] for member in cluster_members]
+        yield dict(msg=f'Cluster {label} size: {count}, {count / len(records) * 100:.2f}% of total')
+        taglines = [member['future_scenario_description'] for member in members]
 
         title = extract_cluster_title(client, taglines)
 
-        yield dict(msg=f'Cluster {label}: #{len(members)}, {title}')
+        yield dict(msg=f'Cluster {label}: #{count}, {title}')
 
-        total += len(members)
+        total += count
         if total > 0.85 * len(records):
             break
+
+def get_side(ratio, dim):
+    i = 0
+    while True:
+        tiles = 2**i
+        side = int(tiles * 256 / dim * ratio)
+        if side >= 1000:
+            return side
+        i += 1
 
 def cluster_screenshots(config):
     config = config.split(';')
@@ -276,10 +286,12 @@ def cluster_screenshots(config):
         # w, h = 530, 1000
         w, h = ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0], ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1]
         dim = max(w, h)
-        res = (int(SIDE*w/dim), int(SIDE*h/dim))
-        offset = (0, lambda x, _: PADDING * (x%2))
-        padding = (0, PADDING)
-        yield dict(msg=f'Creating image: {w}x{h} {res} {padding}')
+        side = get_side(w/dim, OUT_DIM_X)
+        res = (int(side*w/dim), int(side*h/dim))
+        padding_y = int(h * PADDING_RATIO)
+        offset = (0, lambda x, _: padding_y * (x%2))
+        padding = (0, padding_y)
+        yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
         tsne = {}
         yield from create_tsne_image(grid, records, out_dim, 10000,
                                      res, offset, padding, tsne)
