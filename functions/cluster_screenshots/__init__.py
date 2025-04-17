@@ -44,12 +44,13 @@ class ThreadPoolExecutorWithQueueSizeLimit(concurrent.futures.ThreadPoolExecutor
 
 
 def load_records(config, records):
-    params = dict(page_size=TO_PLOT, order_by='-created_at')
+    params = dict(page_size=TO_PLOT*2, order_by='-created_at')
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
         yield dict(msg=f'Got {len(items)} items.')
         yield from ensure_embeddings(items, workspace, api_key)
+        items = [item for item in items if item.get('favorable_future') in ['yes', 'no']]
         records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
