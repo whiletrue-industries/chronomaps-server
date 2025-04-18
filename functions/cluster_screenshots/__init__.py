@@ -34,7 +34,7 @@ OUT_DIM_X = 23
 OUT_RATIO = 1.0
 OUT_DIM_Y = int(math.ceil(OUT_DIM_X * ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0] * OUT_RATIO / (ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1])))
 out_dim = (OUT_DIM_X, OUT_DIM_Y)
-TO_PLOT = int(out_dim[0] * out_dim[1] * 0.75)
+TO_PLOT = int(OUT_DIM_X * OUT_DIM_Y * 0.75)
 PADDING_RATIO = 0.285
 
 EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
