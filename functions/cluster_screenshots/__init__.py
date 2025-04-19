@@ -325,11 +325,12 @@ def convert_coords(coords, conversion_ratio):
 
 def convert_all_coords(info):
     conversion_ratio = info['conversion_ratio']
-    for cluster in info['clusters']:
-        cluster['geo_bounds'] = [
-            convert_coords(cluster['bounds'][0], conversion_ratio),
-            convert_coords(cluster['bounds'][1], conversion_ratio)
-        ]
+    if 'clusters' in info:
+        for cluster in info['clusters']:
+            cluster['geo_bounds'] = [
+                convert_coords(cluster['bounds'][0], conversion_ratio),
+                convert_coords(cluster['bounds'][1], conversion_ratio)
+            ]
     for grid in info['grid']:
         pos = grid['pos'][0] + 0.5, grid['pos'][1] + 0.5
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
@@ -339,6 +340,7 @@ def convert_all_coords(info):
         ]
 
 def cluster_screenshots(config, tag=None):
+    config = config or ''
     config = config.split(';')
     config = [c.split(':') for c in config]
 
@@ -354,12 +356,15 @@ def cluster_screenshots(config, tag=None):
 
     records, activations = records, [rec['embedding'] for rec in records]
 
-    yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-    X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
-    yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
-    grid = calc_tsne_grid(X_2d, out_dim)
-    grid = grid[:len(records)]
-    yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
+    if len(records) > 0:
+        yield dict(msg=f'Generating 2D representation from {len(records)} records.')
+        X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
+        yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
+        grid = calc_tsne_grid(X_2d, out_dim)
+        grid = grid[:len(records)]
+        yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
+    else:
+        grid = []
 
     try:
         # w, h = 530, 1000
@@ -382,7 +387,8 @@ def cluster_screenshots(config, tag=None):
         yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 
-        yield from find_clusters(records, grid, info)
+        if len(records) > 0:
+            yield from find_clusters(records, grid, info)
 
         convert_all_coords(info)
 

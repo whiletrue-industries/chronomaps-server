@@ -63,8 +63,6 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     # Workspace and api_key from query parameters:
     config = req.args.get('config')
     tag = req.args.get('tag')
-    if not config:
-        return https_fn.Response("Missing config", status=400)
     start = time.time()
     def generate():
         for bit in cluster_screenshots_fn(config, tag=tag):
