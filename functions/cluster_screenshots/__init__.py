@@ -35,7 +35,7 @@ OUT_RATIO = 1.0
 OUT_DIM_Y = int(math.ceil(OUT_DIM_X * ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0] * OUT_RATIO / (ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1])))
 out_dim = (OUT_DIM_X, OUT_DIM_Y)
 TO_PLOT = int(OUT_DIM_X * OUT_DIM_Y * 0.75)
-PADDING_RATIO = 0.285
+PADDING_RATIO = 0.5
 
 EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
 
@@ -139,8 +139,12 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, tsne_out)
     offset_x, offset_y = offset
     padding_x, padding_y = padding
 
-    info = dict(dim=out_dim, grid=[])
-    info['conversion_ratio'] = (out_res_x / 256, out_res_y / 256)
+    info = dict(
+        dim=out_dim,
+        grid=[],
+        padding_ratio=PADDING_RATIO,
+        conversion_ratio=(out_res_x / 256, out_res_y / 256)
+    )
 
     out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
     positions = dict()
@@ -167,7 +171,7 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, tsne_out)
             w_range = pos_x * out_res_x + _offset_x
             out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
             if record is not None:
-                info['grid'].append(dict(pos=[pos_x, pos_y], id=record['_id'], metadata=metadata))
+                info['grid'].append(dict(pos=[pos_x + _offset_x, pos_y + _offset_y], id=record['_id'], metadata=metadata))
 
     tsne_out['image'] = out
     tsne_out['info'] = info
