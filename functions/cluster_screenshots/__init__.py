@@ -340,8 +340,7 @@ def convert_all_coords(info):
         ]
 
 def cluster_screenshots(config, tag=None):
-    config = config or ''
-    config = config.split(';')
+    config = config.split(';') if config else []
     config = [c.split(':') for c in config]
 
     if tag is None:
