@@ -338,9 +338,15 @@ def convert_all_coords(info):
             convert_coords([grid['pos'][0] + 1, grid['pos'][1] + 1], conversion_ratio)
         ]
 
-def cluster_screenshots(config):
+def cluster_screenshots(config, tag=None):
     config = config.split(';')
     config = [c.split(':') for c in config]
+
+    if tag is None:
+        if len(config) > 0:
+            tag = config[0][0]
+        else:
+            tag = 'empty'
 
     records = []
     yield from load_records(config, records)
@@ -372,7 +378,7 @@ def cluster_screenshots(config):
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
         yield dict(msg="Creating tiles.")
-        prefix = f'{config[0][0]}/0'
+        prefix = f'{tag}/0'
         yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 
