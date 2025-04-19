@@ -309,7 +309,7 @@ def convert_coords(coords, conversion_ratio):
     conv_x, conv_y = conversion_ratio
     x = x * conv_x
     y = -y * conv_y
-    return x, y
+    return y, x
 
 def convert_all_coords(info):
     conversion_ratio = info['conversion_ratio']
