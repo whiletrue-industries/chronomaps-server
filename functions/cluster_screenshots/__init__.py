@@ -90,7 +90,7 @@ def calc_tsne_grid(X_2d, out_dim):
     grid_jv = grid[col_asses]
     return grid_jv
 
-def get_image(record, target_size):
+def get_image(record, target_size, pos_x, pos_y):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     if record is not None:
         filename = record.get('screenshot_url')
@@ -98,14 +98,14 @@ def get_image(record, target_size):
         rotate = (100 - rotate) / 100 * 32
         favorable_future = record.get('favorable_future')
         sign = 0
-        if favorable_future == 'yes':
+        if favorable_future == 'yes' or 'prefer' in favorable_future:
             sign = 1
-        elif favorable_future == 'no':
+        elif favorable_future == 'no' or 'prevent' in favorable_future:
             sign = -1
         rotate = sign * rotate
     else:
         filename = None
-        rotate = random.randint(0, 64) - 32
+        rotate = (521 * pos_x + 967 * pos_y) % 64 - 32
         sign = 0
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
@@ -158,7 +158,7 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
         for pos_y in range(out_dim[1]):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
-            img, metadata = get_image(record, res)
+            img, metadata = get_image(record, res, pos_x, pos_y)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:
