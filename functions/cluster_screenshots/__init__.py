@@ -132,7 +132,7 @@ def get_image(record, target_size):
     metadata = dict(rotate=rotate, favorable_future=sign)
     return out_img, metadata
 
-def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, tsne_out):
+def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out):
     # print('>>>', filename)
 
     out_res_x, out_res_y = res
@@ -170,8 +170,16 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, tsne_out)
             h_range = pos_y * out_res_y + _offset_y
             w_range = pos_x * out_res_x + _offset_x
             out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
+            if callable(pos_offset[0]):
+                pos_offset_x = pos_offset[0](pos_x, pos_y)
+            else:
+                pos_offset_x = pos_offset[0]
+            if callable(pos_offset[1]):
+                pos_offset_y = pos_offset[1](pos_x, pos_y)
+            else:
+                pos_offset_y = pos_offset[1]
             if record is not None:
-                info['grid'].append(dict(pos=[pos_x + _offset_x, pos_y + _offset_y], id=record['_id'], metadata=metadata))
+                info['grid'].append(dict(pos=[pos_x + pos_offset_x, pos_y + pos_offset_y], id=record['_id'], metadata=metadata))
 
     tsne_out['image'] = out
     tsne_out['info'] = info
@@ -353,12 +361,13 @@ def cluster_screenshots(config):
         dim = max(w, h)
         side = 1000 # get_side(w/dim, OUT_DIM_X)
         res = (int(side*w/dim), int(side*h/dim))
-        padding_y = int(h * PADDING_RATIO)
+        padding_y = int(res[1] * PADDING_RATIO)
         offset = (0, lambda x, _: padding_y * (x%2))
+        pos_offset = (0, lambda x, _: PADDING_RATIO * (x%2))
         padding = (0, padding_y)
         yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
         tsne = {}
-        yield from create_tsne_image(grid, records, out_dim, res, offset, padding, tsne)
+        yield from create_tsne_image(grid, records, out_dim, res, offset, padding, pos_offset, tsne)
         image, info = tsne['image'], tsne['info']
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
