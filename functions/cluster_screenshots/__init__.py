@@ -275,6 +275,8 @@ def find_clusters(records, tsne, info):
     titles = []
 
     for label, count, indexes, members in label_counts:
+        if count < 3:
+            break
         yield dict(msg=f'Cluster {label} size: {count}, {count / len(records) * 100:.2f}% of total')
         taglines = [member['future_scenario_description'] for member in members]
 
@@ -303,7 +305,7 @@ def find_clusters(records, tsne, info):
         yield dict(msg=f'Cluster {label}: #{count}, {title}')
 
         total += count
-        if total > 0.85 * len(records):
+        if total > 0.95 * len(records):
             break
     info['clusters'] = titles
 
@@ -392,7 +394,7 @@ def cluster_screenshots(config, tag=None):
         convert_all_coords(info)
 
         blob = bucket.blob(f'tiles/{prefix}/config.json')
-        blob.cache_control = 'public, max-age=600'
+        blob.cache_control = 'no-cache'
         blob.upload_from_string(json.dumps(info), content_type='application/json')
         blob.make_public()
 
