@@ -307,7 +307,7 @@ def find_clusters(records, tsne, info):
             )
         )
 
-        yield dict(msg=f'Cluster {label}: #{count}, {title["en"]}')
+        yield dict(msg=f'Cluster {label}: #{count}, {title["english"]}')
 
         total += count
         if total > 0.95 * len(records):
