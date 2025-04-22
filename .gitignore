@@ -70,3 +70,4 @@ node_modules/
 
 __pycache__/
 functions/venv/
+.venv/

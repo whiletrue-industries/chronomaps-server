@@ -243,10 +243,15 @@ List of submission taglines:
                 ],
             }
         ],
-        temperature=0.0000001
+        temperature=0.0000001,
+        response_format={
+            "type": 'json_object'
+        }
     )
     # print(f'PPPP\n{prompt}\n\n{completion.choices[0].message.content}')
-    return completion.choices[0].message.content
+    content = completion.choices[0].message.content
+    content = json.loads(content)
+    return content
 
 def find_clusters(records, tsne, info):
     client = OpenAI(api_key=API_KEY)
@@ -302,7 +307,7 @@ def find_clusters(records, tsne, info):
             )
         )
 
-        yield dict(msg=f'Cluster {label}: #{count}, {title}')
+        yield dict(msg=f'Cluster {label}: #{count}, {title["en"]}')
 
         total += count
         if total > 0.95 * len(records):

@@ -16,8 +16,20 @@ Each template includes a "transition bar" where participants specify a significa
 
 An AI already analyzed these submissions and extracted a tagline and topics for each submission.
 
-Below is a list of such taglines and topics extracted from a few submissions.
-Find the overarching theme that connects these taglines and topics, and return it as a single string - in 3 words (or less) in Hebrew.
-Be as specific as possible to the content of the taglines and topics, and avoid generic terms. The best answer will be the one that is an answer to the question "What sort of future change is discussed in most of these submissions?". When answering avoid using the word 'change' in your answer (unless strictly necessary) - just use the word that describes the change. 
+Below is a list of such taglines extracted from a few submissions.
+Find the overarching theme that connects these taglines, and return it as a single string - in 3 words (or less), in a few languages.
+Be as specific as possible to the content of the taglines, and avoid generic terms. The best answer will be the one that is an answer to the question "What sort of future change is discussed in most of these submissions?". When answering avoid using the word 'change' in your answer (unless strictly necessary) - just use the word that describes the change. 
 For example, if the answer is "changes in political superpowers", just write "political superpowers".
+
+The response should be in the following format:
+```json
+{
+  "english": "political superpowers",
+  "dutch": "politieke supermachten",
+  "hebrew": "מעצמות פוליטיות",
+  "arabic": "قوى سياسية عظمى"
+}
+```
+The keys should be exactly these four languages (english, dutch, hebrew, arabic) and the values should be the exact translations of the answer in the respective languages.
+
 
