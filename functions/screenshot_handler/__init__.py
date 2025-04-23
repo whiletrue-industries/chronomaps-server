@@ -4,7 +4,7 @@ from openai import OpenAI
 from firebase_admin import storage
 from firebase_functions.params import SecretParam
 from pathlib import Path
-from config import API_KEY, CHRONOMAPS_API_URL
+from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 import os
 import base64
 import json
@@ -15,7 +15,7 @@ INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_t
 AUTOMATIC_INSTRUCTIONS = Path(__file__).with_name('AUTOMATIC_SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 client = OpenAI(api_key=API_KEY)
 
-bucket = storage.bucket()
+bucket = storage.bucket(name=BUCKET_NAME)
 
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode("utf-8")

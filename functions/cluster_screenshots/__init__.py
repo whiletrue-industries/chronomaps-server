@@ -18,9 +18,9 @@ from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
 
-from config import API_KEY, CHRONOMAPS_API_URL
+from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 
-bucket = storage.bucket()
+bucket = storage.bucket(name=BUCKET_NAME)
 
 EMBEDDING_DIMENSION = 3072
 PERPLEXITY = 50
