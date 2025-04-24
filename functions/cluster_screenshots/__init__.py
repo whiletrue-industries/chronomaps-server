@@ -44,6 +44,15 @@ class ThreadPoolExecutorWithQueueSizeLimit(concurrent.futures.ThreadPoolExecutor
         super().__init__(*args, max_workers=32, **kwargs)
         self._work_queue = queue.Queue(maxsize=maxsize)
 
+def use_item(item):
+    favorable_future = item.get('favorable_future')
+    if not favorable_future:
+        return False
+    if favorable_future in ['yes', 'no']:
+        return True
+    if 'prevent' in favorable_future or 'prefer' in favorable_future:
+        return True
+    return False
 
 def load_records(config, records):
     params = dict(page_size=TO_PLOT*2, order_by='-created_at')
@@ -52,7 +61,7 @@ def load_records(config, records):
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
         yield dict(msg=f'Got {len(items)} items.')
         yield from ensure_embeddings(items, workspace, api_key)
-        items = [item for item in items if item.get('favorable_future') in ['yes', 'no']]
+        items = [item for item in items if use_item(item)]
         records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
@@ -129,7 +138,7 @@ def get_image(record, target_size, pos_x, pos_y):
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    metadata = dict(rotate=rotate, favorable_future=sign)
+    metadata = dict(rotate=rotate, favorable_future=sign, timestamp=record['created_at'])
     return out_img, metadata
 
 def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out):
