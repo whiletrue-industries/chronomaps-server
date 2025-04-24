@@ -32,7 +32,7 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     - key: CONFIG__ITS_TIME
     serviceAccountEmail: null
-    timeoutSeconds: null
+    timeoutSeconds: 1800
   cluster_screenshots:
     availableMemoryMb: 8192
     concurrency: null
@@ -48,7 +48,7 @@ endpoints:
     secretEnvironmentVariables:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
-    timeoutSeconds: null
+    timeoutSeconds: 1800
   item_ingress_agent:
     availableMemoryMb: null
     concurrency: null

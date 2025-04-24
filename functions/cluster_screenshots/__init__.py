@@ -136,7 +136,11 @@ def get_image(record, target_size, pos_x, pos_y):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
-        img = Image.open(requests.get(filename, stream=True).raw)
+        try:
+            img = Image.open(requests.get(filename, stream=True).raw)
+        except:
+            print('Error opening image:', filename)
+            raise
         ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
         # resize the image by ratio:
         img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
