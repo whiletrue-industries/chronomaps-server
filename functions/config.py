@@ -2,4 +2,4 @@ from firebase_functions.params import SecretParam
 
 API_KEY = SecretParam('OPENAI_API_KEY').value.strip()
 CHRONOMAPS_API_URL = SecretParam('CHRONOMAPS_API_URL').value.strip()
-BUCKET_NAME = 'gs://chronomaps3-eu'
+BUCKET_NAME = 'chronomaps3-eu'
