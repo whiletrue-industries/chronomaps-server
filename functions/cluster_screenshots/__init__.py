@@ -86,7 +86,7 @@ def ensure_embeddings(records, workspace, api_key):
         requests.put(f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
 
 def generate_tsne(activations, perplexity=50, tsne_iter=5000):
-    tsne = TSNE(perplexity=perplexity, n_components=2, init='random', n_iter=tsne_iter)
+    tsne = TSNE(perplexity=perplexity, n_components=2, init='random', max_iter=tsne_iter)
     X_2d = tsne.fit_transform(np.array(activations))
     X_2d -= X_2d.min(axis=0)
     X_2d /= X_2d.max(axis=0)
@@ -107,6 +107,7 @@ def get_image(record, target_size, pos_x, pos_y):
     metadata = dict()
     if record is not None:
         filename = record.get('screenshot_url')
+        filename = filename.replace('https://storage.googleapis.com/chronomaps3.firebasestorage.app', 'https://storage.googleapis.com/chronomaps3-eu')
         rotate = record.get('plausibility') or 100
         rotate = (100 - rotate) / 100 * 32
         favorable_future = record.get('favorable_future')
