@@ -380,6 +380,25 @@ def cluster_screenshots(config, tag=None):
         else:
             tag = 'empty'
 
+    blob = bucket.blob(f'tiles/{tag}/config.json')
+    set_id = 0
+    if blob.exists():
+        content = blob.download_as_text()
+        try:
+            tag_info = json.loads(content)
+            set_id = tag_info['set_id']
+            set_it += 1
+            if set_id == 16:
+                set_id = 0
+        except json.JSONDecodeError:
+            pass
+    else:
+        blob.make_public()
+        blob.cache_control = 'no-cache'
+    blob.upload_from_string(json.dumps(dict(set=set_id)), content_type='application/json')
+
+    prefix = f'{tag}/{set_id}'
+
     records = []
     yield from load_records(config, records)
     records = records[:TO_PLOT]
@@ -412,8 +431,7 @@ def cluster_screenshots(config, tag=None):
         image, info = tsne['image'], tsne['info']
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
         image = Image.fromarray(image)
-        yield dict(msg="Creating tiles.")
-        prefix = f'{tag}/0'
+        yield dict(msg="Creating tiles.")        
         yield from create_tiles(prefix, image)
         yield dict(msg='Processing complete.')
 

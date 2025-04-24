@@ -24,7 +24,7 @@ endpoints:
     minInstances: null
     platform: gcfv2
     region:
-    - europe-west4
+    - europe-west1
     scheduleTrigger:
       retryConfig: {}
       schedule: every hour
