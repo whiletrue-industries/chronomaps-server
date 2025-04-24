@@ -66,11 +66,11 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: 1800
-  cluster___its_time:
+  cluster_its_time:
     availableMemoryMb: 8192
     cpu: 2
     concurrency: null
-    entryPoint: cluster___its_time
+    entryPoint: cluster_its_time
     httpsTrigger: {}
     ingressSettings: null
     labels: {}
@@ -89,6 +89,8 @@ params:
 - name: OPENAI_API_KEY
   type: secret
 - name: CHRONOMAPS_API_URL
+  type: secret
+- name: CONFIG__ITS_TIME
   type: secret
 requiredAPIs: []
 specVersion: v1alpha1

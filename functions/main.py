@@ -73,8 +73,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
 
 
 @scheduler_fn.on_schedule(region='europe-west4', schedule="every hour", secrets=['CHRONOMAPS_API_URL', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_32)
-def cluster___its_time(event: scheduler_fn.ScheduledEvent) -> None:
-    """Delete users who've been inactive for 30 days or more."""
+def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     config = SecretParam('CONFIG__ITS_TIME').value.strip()
     if not config:
         print("No config provided")
