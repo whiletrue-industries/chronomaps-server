@@ -57,7 +57,7 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.GB_8)
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.GB_8)
 def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
     # Workspace and api_key from query parameters:
@@ -72,7 +72,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
 
-@scheduler_fn.on_schedule(region='europe-west4', schedule="every hour", secrets=['CHRONOMAPS_API_URL', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
+@scheduler_fn.on_schedule(region='europe-west4', schedule="every hour", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     config = SecretParam('CONFIG__ITS_TIME').value.strip()
     if not config:

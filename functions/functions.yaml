@@ -30,6 +30,7 @@ endpoints:
       schedule: every hour
     secretEnvironmentVariables:
     - key: CHRONOMAPS_API_URL
+    - key: OPENAI_API_KEY
     - key: CONFIG__ITS_TIME
     serviceAccountEmail: null
     timeoutSeconds: 1800
@@ -47,6 +48,7 @@ endpoints:
     - europe-west4
     secretEnvironmentVariables:
     - key: CHRONOMAPS_API_URL
+    - key: OPENAI_API_KEY
     serviceAccountEmail: null
     timeoutSeconds: 1800
   item_ingress_agent:
