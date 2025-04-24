@@ -101,6 +101,7 @@ def calc_tsne_grid(X_2d, out_dim):
 
 def get_image(record, target_size, pos_x, pos_y):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
+    metadata = dict()
     if record is not None:
         filename = record.get('screenshot_url')
         rotate = record.get('plausibility') or 100
@@ -112,12 +113,17 @@ def get_image(record, target_size, pos_x, pos_y):
         elif favorable_future == 'no' or 'prevent' in favorable_future:
             sign = -1
         rotate = sign * rotate
-        timestamp = record['created_at']
+        metadata = dict(
+            rotate=rotate,
+            sign=sign,
+            mostly='mostly' in favorable_future,
+            favorable_future=favorable_future,
+            timestamp=record['created_at'],
+            url=record.get('screenshot_url'),
+        )
     else:
         filename = None
-        rotate = (521 * pos_x + 967 * pos_y) % 64 - 32
-        sign = 0
-        timestamp = None
+        rotate = (521 * pos_x + 967 * pos_y) % 64 - 32   # Pseudo-random rotation
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
         filename = Path(__file__).with_name('empty-space.png')
@@ -140,7 +146,6 @@ def get_image(record, target_size, pos_x, pos_y):
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    metadata = dict(rotate=rotate, favorable_future=sign, timestamp=timestamp)
     return out_img, metadata
 
 def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out):
