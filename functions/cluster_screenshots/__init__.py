@@ -162,7 +162,8 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
         dim=out_dim,
         grid=[],
         padding_ratio=PADDING_RATIO,
-        conversion_ratio=(out_res_x / 256, out_res_y / 256)
+        conversion_ratio=(out_res_x / 256, out_res_y / 256),
+        cell_ratios=CELL_RATIOS
     )
 
     out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
