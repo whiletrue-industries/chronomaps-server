@@ -66,6 +66,25 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: 1800
+  cluster___its_time:
+    availableMemoryMb: 8192
+    cpu: 2
+    concurrency: null
+    entryPoint: cluster___its_time
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: CHRONOMAPS_API_URL
+    - key: CONFIG__ITS_TIME
+    serviceAccountEmail: null
+    timeoutSeconds: 1800
 params:
 - name: OPENAI_API_KEY
   type: secret
