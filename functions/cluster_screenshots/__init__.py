@@ -346,21 +346,20 @@ def convert_coords(coords, conversion_ratio):
     y = -y * conv_y
     return y, x
 
+def convert_bounds(bounds, conversion_ratio):
+    y1, x1 = convert_coords(bounds[0], conversion_ratio)
+    y2, x2 = convert_coords(bounds[1], conversion_ratio)
+    return [[min(y1, y2), min(x1, x2)], [max(y1, y2), max(x1, x2)]]
+
 def convert_all_coords(info):
     conversion_ratio = info['conversion_ratio']
     if 'clusters' in info:
         for cluster in info['clusters']:
-            cluster['geo_bounds'] = [
-                convert_coords(cluster['bounds'][0], conversion_ratio),
-                convert_coords(cluster['bounds'][1], conversion_ratio)
-            ]
+            cluster['geo_bounds'] = convert_bounds(cluster['bounds'], conversion_ratio)
     for grid in info['grid']:
         pos = grid['pos'][0] + 0.5, grid['pos'][1] + 0.5
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
-        grid['geo_bounds'] = [
-            convert_coords([grid['pos'][0], grid['pos'][1]], conversion_ratio),
-            convert_coords([grid['pos'][0] + 1, grid['pos'][1] + 1], conversion_ratio)
-        ]
+        grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
 def cluster_screenshots(config, tag=None):
     config = config.split(';') if config else []
