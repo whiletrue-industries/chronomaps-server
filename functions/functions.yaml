@@ -14,8 +14,43 @@ endpoints:
     secretEnvironmentVariables: []
     serviceAccountEmail: null
     timeoutSeconds: null
+  cluster_its_time:
+    availableMemoryMb: 8192
+    concurrency: null
+    entryPoint: cluster_its_time
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    scheduleTrigger:
+      retryConfig: {}
+      schedule: every hour
+    secretEnvironmentVariables:
+    - key: CHRONOMAPS_API_URL
+    - key: CONFIG__ITS_TIME
+    serviceAccountEmail: null
+    timeoutSeconds: null
+  cluster_screenshots:
+    availableMemoryMb: 8192
+    concurrency: null
+    entryPoint: cluster_screenshots
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: CHRONOMAPS_API_URL
+    serviceAccountEmail: null
+    timeoutSeconds: null
   item_ingress_agent:
-    availableMemoryMb: 512
+    availableMemoryMb: null
     concurrency: null
     entryPoint: item_ingress_agent
     httpsTrigger: {}
@@ -32,7 +67,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   screenshot_handler:
-    availableMemoryMb: 512
+    availableMemoryMb: null
     concurrency: null
     entryPoint: screenshot_handler
     httpsTrigger: {}
@@ -48,49 +83,12 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: null
-  cluster_screenshots:
-    availableMemoryMb: 8192
-    cpu: 2
-    concurrency: null
-    entryPoint: cluster_screenshots
-    httpsTrigger: {}
-    ingressSettings: null
-    labels: {}
-    maxInstances: null
-    minInstances: null
-    platform: gcfv2
-    region:
-    - europe-west4
-    secretEnvironmentVariables:
-    - key: OPENAI_API_KEY
-    - key: CHRONOMAPS_API_URL
-    serviceAccountEmail: null
-    timeoutSeconds: 1800
-  cluster_its_time:
-    availableMemoryMb: 8192
-    cpu: 2
-    concurrency: null
-    entryPoint: cluster_its_time
-    httpsTrigger: {}
-    ingressSettings: null
-    labels: {}
-    maxInstances: null
-    minInstances: null
-    platform: gcfv2
-    region:
-    - europe-west4
-    secretEnvironmentVariables:
-    - key: OPENAI_API_KEY
-    - key: CHRONOMAPS_API_URL
-    - key: CONFIG__ITS_TIME
-    serviceAccountEmail: null
-    timeoutSeconds: 1800
 params:
 - name: OPENAI_API_KEY
   type: secret
 - name: CHRONOMAPS_API_URL
   type: secret
-- name: CONFIG__ITS_TIME
-  type: secret
-requiredAPIs: []
+requiredAPIs:
+- api: cloudscheduler.googleapis.com
+  reason: Needed for scheduled functions.
 specVersion: v1alpha1

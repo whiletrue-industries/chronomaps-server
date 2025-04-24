@@ -13,7 +13,10 @@ from openai import OpenAI
 
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
-from lapjv import lapjv
+try:
+    from lapjv import lapjv
+except ImportError:
+    pass
 from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
