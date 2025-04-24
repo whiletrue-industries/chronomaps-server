@@ -112,10 +112,12 @@ def get_image(record, target_size, pos_x, pos_y):
         elif favorable_future == 'no' or 'prevent' in favorable_future:
             sign = -1
         rotate = sign * rotate
+        timestamp = record['created_at']
     else:
         filename = None
         rotate = (521 * pos_x + 967 * pos_y) % 64 - 32
         sign = 0
+        timestamp = None
     inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
     if not filename:
         filename = Path(__file__).with_name('empty-space.png')
@@ -138,7 +140,7 @@ def get_image(record, target_size, pos_x, pos_y):
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    metadata = dict(rotate=rotate, favorable_future=sign, timestamp=record['created_at'])
+    metadata = dict(rotate=rotate, favorable_future=sign, timestamp=timestamp)
     return out_img, metadata
 
 def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out):
