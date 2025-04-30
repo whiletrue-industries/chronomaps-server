@@ -21,7 +21,7 @@ def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
     with chronomaps_api_app.request_context(req.environ):
         return chronomaps_api_app.full_dispatch_request()
     
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'])
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
 def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
     # Workspace and api_key from query parameters:
@@ -39,7 +39,7 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     automatic = req.args.get('automatic', 'false').lower() == 'true'
     return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type)
 
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'])
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.MB_512)
 def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
     # Workspace and api_key from query parameters:
