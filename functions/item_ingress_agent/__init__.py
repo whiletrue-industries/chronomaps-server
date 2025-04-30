@@ -63,7 +63,7 @@ def get_assistant_id():
 
 def fetch_item(workspace, item_id, api_key):
     url = os.path.join(CHRONOMAPS_API_URL, workspace, item_id)
-    response = requests.get(url, headers={'Authorization': api_key})
+    response = requests.get(url, headers={'Authorization': api_key}, timeout=10)
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403
     if response.status_code == 404:
@@ -84,6 +84,7 @@ def update_item_properties(workspace, item_id, api_key, item_key, payload):
     return item_data, False
 
 def item_ingress_agent(workspace, item_id, api_key, item_key, message):
+    yield dict(kind='status', message='fetching item')
     item, error_code = fetch_item(workspace, item_id, api_key)
     if error_code:
         yield dict(kind='error', message='Failed to fetch item', code=error_code)
@@ -94,6 +95,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     if not thread_id:
         new_thread = True
         item_json = json.dumps(item, indent=2, ensure_ascii=False)
+        yield dict(kind='status', message='creating thread')
         thread = client.beta.threads.create()
         client.beta.threads.messages.create(
             thread_id=thread.id,
@@ -101,6 +103,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             content=item_json,
         )
     else:
+        yield dict(kind='status', message='fetching thread', thread_id=thread_id)
         thread = client.beta.threads.retrieve(thread_id)
         if message != 'initial':
             client.beta.threads.messages.create(
