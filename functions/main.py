@@ -60,8 +60,8 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
     else:
         # Call the function and get the result
-        for _ in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
-            pass
+        for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+            print(json.dumps(bit, ensure_ascii=False))
         # Return the result as a JSON response
         return dict(status='ok')
 
