@@ -51,11 +51,19 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("Missing workspace, api_key, item_id or item_key", status=400)
     # Message from request body:
     message = req.args.get('message')
+    stream = req.args.get('stream') != 'false'
     # Call the item ingress agent function
-    def generate():
-        for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
-            yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
-    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
+    if stream:
+        def generate():
+            for bit in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+                yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
+        return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
+    else:
+        # Call the function and get the result
+        for _ in item_ingress_agent_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key, message=message):
+            pass
+        # Return the result as a JSON response
+        return dict(status='ok')
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.GB_8)
 def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
