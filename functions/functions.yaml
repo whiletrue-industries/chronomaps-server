@@ -67,7 +67,7 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     - key: OPENAI_API_KEY
     serviceAccountEmail: null
-    timeoutSeconds: null
+    timeoutSeconds: 180
   screenshot_handler:
     availableMemoryMb: 512
     concurrency: null
