@@ -2,9 +2,16 @@ from firebase_admin import firestore
 import flask
 import uuid
 from itertools import islice
+from ..config import PRIVATE_KEY
 
 db = firestore.client()
 app = flask.Flask(__name__)
+
+PRIVILEGE_ADMIN = 4
+PRIVILEGE_PRIVATE_KEY = 3
+PRIVILEGE_COLLABORATE = 2
+PRIVILEGE_VIEW = 1
+PRIVILEGE_PUBLIC = 0
 
 # Helper functions for authentication and utility
 def generate_keys():
@@ -20,12 +27,20 @@ def authenticate(workspace, key, required_roles):
     if not config:
         flask.abort(404, "Workspace not found")
     if "admin" in required_roles and key == config["keys"]["admin"]:
-        return True
+        return PRIVILEGE_ADMIN
     if "collaborate" in required_roles and key == config["keys"]["collaborate"] and config["config"]["collaborate"]:
-        return True
-    if "view" in required_roles and (key == config["keys"]["view"] or config["config"]["public"]):
-        return True
+        return PRIVILEGE_COLLABORATE
+    if "view" in required_roles:
+        if key == config["keys"]["view"]:
+            return PRIVILEGE_VIEW
+        if config["config"]["public"]:
+            return PRIVILEGE_PUBLIC
     flask.abort(403, "Unauthorized")
+
+def sanitize_metadata(metadata, exclude_private=True):
+    if exclude_private:
+        return {k: v for k, v in metadata.items() if not k.startswith(PRIVATE_KEY)}
+    return metadata
 
 # Endpoints
 @app.post("/")
@@ -63,7 +78,7 @@ def get_workspace(workspace):
 @app.get("/<workspace>/items")
 def get_items(workspace):
     key = flask.request.headers.get("Authorization")
-    authenticate(workspace, key, ["admin", "collaborate", "view"])
+    privilege = authenticate(workspace, key, ["admin", "collaborate", "view"])
     page = flask.request.args.get("page", 0, type=int)
     page_size = flask.request.args.get("page_size", 10, type=int)
     order_by = flask.request.args.get("order_by", "-created_at")
@@ -75,7 +90,12 @@ def get_items(workspace):
     items = db.collection(workspace).order_by(order_by, direction=direction).stream()
     items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
     items_metadata = (
-        dict(**item.get("metadata", {}), _id=item['id']) for item in items if item['id'][0] != "."
+        sanitize_metadata(
+            dict(**item.get("metadata", {}), _id=item['id']),
+            exclude_private=privilege < PRIVILEGE_PRIVATE_KEY
+        )
+        for item in items
+        if item['id'][0] != "."
     )
     paginated_items = list(islice(items_metadata, page * page_size, (page + 1) * page_size))
     return paginated_items, 200
@@ -83,27 +103,29 @@ def get_items(workspace):
 @app.get("/<workspace>/<item_id>")
 def get_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
-    authenticate(workspace, key, ["admin", "collaborate", "view"])
+    privilege = authenticate(workspace, key, ["admin", "collaborate", "view"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if not item:
         flask.abort(404, "Item not found")
-    return item["metadata"], 200
+    return sanitize_metadata(item["metadata"], privilege < PRIVILEGE_PRIVATE_KEY), 200
 
 @app.put("/<workspace>/<item_id>")
 def update_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
     item_key = flask.request.args.get("item-key")
     if not item_key:
-        authenticate(workspace, key, ["admin"])
+        privilege = authenticate(workspace, key, ["admin"])
     else:
-        authenticate(workspace, key, ["admin", "collaborate"])
+        privilege = authenticate(workspace, key, ["admin", "collaborate"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if item_key:
         if not item or item["key"] != item_key:
             flask.abort(403, "Unauthorized")
+        privilege = PRIVILEGE_PRIVATE_KEY
     metadata = flask.request.json
+    metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
     item_ref.update({"metadata": item["metadata"]})
     return {"message": "Item updated"}, 200

@@ -2,7 +2,7 @@ from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
 from pathlib import Path
-from config import API_KEY, CHRONOMAPS_API_URL
+from config import API_KEY, CHRONOMAPS_API_URL, PRIVATE_KEY
 import os
 import base64
 import json
@@ -158,6 +158,9 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                             print('PAYLOAD:', payload)
                             try:
                                 payload = json.loads(payload)
+                                for k in ['email']:
+                                    if k in payload:
+                                        payload[PRIVATE_KEY + k] = payload.pop(k)
                                 # Update item properties
                                 ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
                                 if error:
