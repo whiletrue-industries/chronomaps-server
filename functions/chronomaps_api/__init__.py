@@ -103,11 +103,16 @@ def get_items(workspace):
 @app.get("/<workspace>/<item_id>")
 def get_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
+    item_key = flask.request.args.get("item-key")
     privilege = authenticate(workspace, key, ["admin", "collaborate", "view"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if not item:
         flask.abort(404, "Item not found")
+    if item_key:
+        if not item or item["key"] != item_key:
+            flask.abort(403, "Unauthorized")
+        privilege = PRIVILEGE_PRIVATE_KEY
     return sanitize_metadata(item["metadata"], privilege < PRIVILEGE_PRIVATE_KEY), 200
 
 @app.put("/<workspace>/<item_id>")

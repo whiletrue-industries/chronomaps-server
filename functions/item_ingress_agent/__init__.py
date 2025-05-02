@@ -61,9 +61,10 @@ def get_assistant_id():
         )
     return _assistant_id
 
-def fetch_item(workspace, item_id, api_key):
+def fetch_item(workspace, item_id, api_key, item_key):
     url = os.path.join(CHRONOMAPS_API_URL, workspace, item_id)
-    response = requests.get(url, headers={'Authorization': api_key}, timeout=10)
+    params = {'item-key': item_key} if item_key else {}
+    response = requests.get(url, headers={'Authorization': api_key}, params=params, timeout=10)
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403
     if response.status_code == 404:
@@ -85,13 +86,13 @@ def update_item_properties(workspace, item_id, api_key, item_key, payload):
 
 def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     yield dict(kind='status', message='fetching item')
-    item, error_code = fetch_item(workspace, item_id, api_key)
+    item, error_code = fetch_item(workspace, item_id, api_key, item_key)
     if error_code:
         yield dict(kind='error', message='Failed to fetch item', code=error_code)
         return
     
     new_thread = False
-    thread_id = item.pop('.internal-ingress-thread-id', None)
+    thread_id = item.pop(PRIVATE_KEY + 'ingress-thread-id', None)
     if not thread_id:
         new_thread = True
         item_json = json.dumps(item, indent=2, ensure_ascii=False)
@@ -198,6 +199,6 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     if new_thread:
         # update thread_id in item properties
         updated = update_item_properties(workspace, item_id, api_key,item_key, {
-            '.internal-ingress-thread-id': thread.id
+            PRIVATE_KEY + 'ingress-thread-id': thread.id
         })
         print('Updated item with new thread_id:', updated)
