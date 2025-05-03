@@ -130,7 +130,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                             text = text.split('DONE')[0]
                     if message.role == 'user' and idx == 0:
                         continue
-                    yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
+                    yield dict(kind='message', role=message.role, content=text, idx=idx)
                     idx += 1
         yield dict(kind='status', message=f'processed {idx} messages', role=role)
         if role == 'assistant':
