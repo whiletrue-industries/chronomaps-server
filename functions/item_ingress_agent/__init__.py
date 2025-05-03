@@ -106,7 +106,9 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     else:
         yield dict(kind='status', message='fetching thread', thread_id=thread_id)
         thread = client.beta.threads.retrieve(thread_id)
+        yield dict(kind='status', message='got thread', thread_id=thread_id)
         if message != 'initial':
+            yield dict(kind='status', message='creating message', thread_id=thread_id)
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role='user',
@@ -115,6 +117,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc')
         role = None
         idx = 0
+        yield dict(kind='status', message=f'got {len(messages)} messages', thread_id=thread_id)
         for message in messages:
             for content in message.content:
                 role = message.role
@@ -126,6 +129,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                         continue
                     yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
                     idx += 1
+        yield dict(kind='status', message=f'processed {len(messages)} messages', role=role)
         if role == 'assistant':
             yield dict(kind='status', status='completed')
             return
@@ -137,8 +141,9 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         stream=True,
     )
 
-    while stream:    
+    while stream:
         for event in stream:
+            yield dict(kind='event', event=event.event)
             if event.event == 'thread.run.completed':
                 yield dict(kind='status', status='completed')
                 stream = None
