@@ -2,7 +2,7 @@ from firebase_admin import firestore
 import flask
 import uuid
 from itertools import islice
-from ..config import PRIVATE_KEY
+from config import PRIVATE_KEY
 
 db = firestore.client()
 app = flask.Flask(__name__)
