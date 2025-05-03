@@ -117,7 +117,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
         messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc')
         role = None
         idx = 0
-        yield dict(kind='status', message=f'got {len(messages)} messages', thread_id=thread_id)
+        yield dict(kind='status', message=f'got messages', thread_id=thread_id)
         for message in messages:
             for content in message.content:
                 role = message.role
@@ -129,7 +129,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                         continue
                     yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
                     idx += 1
-        yield dict(kind='status', message=f'processed {len(messages)} messages', role=role)
+        yield dict(kind='status', message=f'processed {idx} messages', role=role)
         if role == 'assistant':
             yield dict(kind='status', status='completed')
             return
