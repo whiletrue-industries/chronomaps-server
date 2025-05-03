@@ -122,11 +122,12 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             for content in message.content:
                 role = message.role
                 if content.type == 'text':
+                    text = content.text.value
                     if role == 'assistant':
-                        lines = [line.strip()[:10] for line in content.text.value.split('\n') if line.strip()]
+                        lines = [line.strip()[:10] for line in text.split('\n') if line.strip()]
                         if any('DONE' in line for line in lines):
                             yield dict(kind='status', status='done')
-                            continue
+                            text = text.split('DONE')[0]
                     if message.role == 'user' and idx == 0:
                         continue
                     yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
