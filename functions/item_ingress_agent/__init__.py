@@ -122,9 +122,11 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             for content in message.content:
                 role = message.role
                 if content.type == 'text':
-                    if role == 'assistant' and 'DONE' in content.text.value[:10]:
-                        yield dict(kind='status', status='done')
-                        continue
+                    if role == 'assistant':
+                        lines = [line.strip()[:10] for line in content.text.value.split('\n') if line.strip()]
+                        if any('DONE' in line for line in lines):
+                            yield dict(kind='status', status='done')
+                            continue
                     if message.role == 'user' and idx == 0:
                         continue
                     yield dict(kind='message', role=message.role, content=content.text.value, idx=idx)
@@ -142,6 +144,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     )
 
     while stream:
+        current_line = ''
         for event in stream:
             yield dict(kind='event', event=event.event)
             if event.event == 'thread.run.completed':
@@ -200,6 +203,11 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 for block in event.data.delta.content:
                     if block.type == 'text' and block.text.value:
                         text += block.text.value
+                current_line += text
+                current_line = current_line.split('\n')[-1]
+                if 'DONE' in current_line:
+                    yield dict(kind='status', status='done')
+                    text = text.split('DONE')[0]
                 yield dict(kind='text', value=text)
 
     if new_thread:
