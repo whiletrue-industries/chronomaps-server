@@ -71,8 +71,17 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
             favorable_future=content.get('favorable_future'),
         )
 
-    # Create new item in Chronomaps API
+    # Read workspace config
     url = os.path.join(CHRONOMAPS_API_URL, workspace)
+    response = requests.get(url, headers={'Authorization': api_key}).json()
+    if response.status_code == 403:
+        return dict(error=f"Workspace {workspace} not authorized for access with this key"), 403
+    if response.status_code == 404:
+        return dict(error=f"Workspace {workspace} not found"), 404
+    moderation = response.json().get('default_moderation_level')
+    record['.private.moderation'] = moderation or 3   # Can show, not moderated
+
+    # Create new item in Chronomaps API
     response = requests.post(url, json=record, headers={'Authorization': api_key})
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403

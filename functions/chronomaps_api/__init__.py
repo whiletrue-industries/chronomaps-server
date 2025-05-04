@@ -82,12 +82,19 @@ def get_items(workspace):
     page = flask.request.args.get("page", 0, type=int)
     page_size = flask.request.args.get("page_size", 10, type=int)
     order_by = flask.request.args.get("order_by", "-created_at")
+    filters = flask.request.args.get("filters", type=str)
     direction = firestore.Query.ASCENDING
     if order_by.startswith("-"):
         order_by = order_by[1:]
         direction = firestore.Query.DESCENDING
     order_by = 'metadata.' + order_by
-    items = db.collection(workspace).order_by(order_by, direction=direction).stream()
+    items = db.collection(workspace).order_by(order_by, direction=direction)
+    if filters:
+        filters = filters.split("|")
+        for filter in filters:
+            key, op, value = filter.split(None, 2)
+            items = items.where(key, op, value)
+    items = items.stream()
     items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
     items_metadata = (
         sanitize_metadata(
