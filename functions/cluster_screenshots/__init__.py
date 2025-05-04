@@ -23,7 +23,6 @@ from firebase_admin import storage
 
 from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 
-storage
 bucket = storage.bucket(name=BUCKET_NAME)
 
 EMBEDDING_DIMENSION = 3072
@@ -383,10 +382,10 @@ def cluster_screenshots(config, tag=None):
             tag = 'empty'
 
 
-    blob = bucket.blob(f'tiles/{tag}/config.json')
+    global_config_blob = bucket.blob(f'tiles/{tag}/config.json')
     set_id = 0
-    if blob.exists():
-        content = blob.download_as_text()
+    if global_config_blob.exists():
+        content = global_config_blob.download_as_text()
         try:
             tag_info = json.loads(content)
             set_id = tag_info['set_id']
@@ -396,9 +395,6 @@ def cluster_screenshots(config, tag=None):
         except Exception as e:
             print('Error loading config:', e)
             pass
-    blob.cache_control = 'no-cache'
-    blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
-    blob.make_public()
 
     prefix = f'{tag}/{set_id}'
 
@@ -447,6 +443,10 @@ def cluster_screenshots(config, tag=None):
         blob.cache_control = 'no-cache'
         blob.upload_from_string(json.dumps(info), content_type='application/json')
         blob.make_public()
+
+        global_config_blob.cache_control = 'no-cache'
+        global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
+        global_config_blob.make_public()
 
         yield dict(msg=f'Config uploaded: {blob.public_url}')
     except Exception as e:
