@@ -23,6 +23,7 @@ from firebase_admin import storage
 
 from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 
+storage
 bucket = storage.bucket(name=BUCKET_NAME)
 
 EMBEDDING_DIMENSION = 3072

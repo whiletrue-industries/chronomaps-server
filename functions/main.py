@@ -1,6 +1,7 @@
 from firebase_admin import initialize_app, firestore, credentials
 from firebase_functions.params import SecretParam
 from firebase_functions import https_fn, options, scheduler_fn
+from config import CONFIG__ITS_TIME
 import json
 import time 
 
@@ -83,7 +84,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every 10 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
-    config = SecretParam('CONFIG__ITS_TIME').value.strip()
+    config = CONFIG__ITS_TIME
     if not config:
         print("No config provided")
         return
