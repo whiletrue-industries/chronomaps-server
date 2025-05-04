@@ -381,6 +381,7 @@ def cluster_screenshots(config, tag=None):
         else:
             tag = 'empty'
 
+
     blob = bucket.blob(f'tiles/{tag}/config.json')
     set_id = 0
     if blob.exists():
