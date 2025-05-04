@@ -81,7 +81,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
 
-@scheduler_fn.on_schedule(region='europe-west1', schedule="every hour", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every 10 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     config = SecretParam('CONFIG__ITS_TIME').value.strip()
     if not config:
