@@ -391,7 +391,8 @@ def cluster_screenshots(config, tag=None):
             set_id += 1
             if set_id == 16:
                 set_id = 0
-        except json.JSONDecodeError:
+        except Exception as e:
+            print('Error loading config:', e)
             pass
     blob.cache_control = 'no-cache'
     blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
