@@ -34,7 +34,7 @@ The response should be a JSON object that adheres to the following structure:
   "future_scenario_tagline": "a short tagline summarizing the future scenario depicted in the screenshot",
   "future_scenario_description": "a detailed description of the future scenario depicted in the screenshot, including key themes, technologies, or societal changes",
   "future_scenario_topics": [""], # a list of topics that are relevant to the future scenario, such as 'AI', 'social media', 'politics', 'environment', etc.
-  "detected_language": "English/Hebrew/Arabic/Unknown/...", # the language of the text in the screenshot, if detected, or "Unknown" if no language is detected.
+  "detected_language": "English/Hebrew/Arabic/Unknown/...", # the language of the text in the screenshot, if detected, or "Unknown" if no language is detected. Choose only one language if multiple languages are detected.
   "plausibility": <0-100>, # A score of 100 means the future scenario is certain to happen (in the your opinion), while a score of 0 means it has a very low chance of happening.
   "favorable_future": "yes/no/uncertain", # indicates whether the future scenario is favorable or not
 }

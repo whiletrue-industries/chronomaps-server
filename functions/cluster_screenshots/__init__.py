@@ -30,6 +30,7 @@ PERPLEXITY = 50
 TSNE_ITER = 5000
 ORIGINAL_IMAGE_SIZE = (530, 1000)
 CELL_RATIOS = (1.86, 1.135)
+BG_COLOR = (255, 253, 246)
 
 # OUT_DIM_X = 30
 # OUT_RATIO = 9/16
@@ -149,8 +150,8 @@ def get_image(record, target_size, pos_x, pos_y):
         img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
                         img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-    img = img.rotate(rotate, expand=True, fillcolor=(255, 255, 255))
-    out_img = Image.new('RGB', target_size, (255, 255, 255))
+    img = img.rotate(rotate, expand=True, fillcolor=BG_COLOR)
+    out_img = Image.new('RGB', target_size, BG_COLOR)
     assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
@@ -171,7 +172,7 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
         cell_ratios=CELL_RATIOS
     )
 
-    out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * 255
+    out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * np.array(BG_COLOR, dtype=np.uint8)
     positions = dict()
     for pos, record in zip(grid_jv, records):
         pos_x = round(pos[1] * (out_dim[0] - 1))# + img_ofs
@@ -210,7 +211,7 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
     tsne_out['info'] = info
 
 def upload_image(image, tile_size, w, h, prefix, zoom, x, y):
-    target = Image.new('RGB', (tile_size, tile_size), (255, 255, 255))
+    target = Image.new('RGB', (tile_size, tile_size), BG_COLOR)
     left = min(x * tile_size, w)
     upper = min(y * tile_size, h)
     right = min(left + tile_size, w)
