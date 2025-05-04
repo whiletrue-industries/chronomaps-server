@@ -4,7 +4,7 @@ from openai import OpenAI
 from firebase_admin import storage
 from firebase_functions.params import SecretParam
 from pathlib import Path
-from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
+from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME, PRIVATE_KEY
 import os
 import base64
 import json
@@ -80,7 +80,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
         return dict(error=f"Workspace {workspace} not found"), 404
     response.raise_for_status()
     moderation = response.json().get('default_moderation_level')
-    record['.private.moderation'] = moderation or 3   # Can show, not moderated
+    record[f'{PRIVATE_KEY}moderation'] = moderation or 3   # Can show, not moderated
 
     # Create new item in Chronomaps API
     response = requests.post(url, json=record, headers={'Authorization': api_key})
