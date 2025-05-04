@@ -73,11 +73,12 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
 
     # Read workspace config
     url = os.path.join(CHRONOMAPS_API_URL, workspace)
-    response = requests.get(url, headers={'Authorization': api_key}).json()
+    response = requests.get(url, headers={'Authorization': api_key})
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized for access with this key"), 403
     if response.status_code == 404:
         return dict(error=f"Workspace {workspace} not found"), 404
+    response.raise_for_status()
     moderation = response.json().get('default_moderation_level')
     record['.private.moderation'] = moderation or 3   # Can show, not moderated
 
