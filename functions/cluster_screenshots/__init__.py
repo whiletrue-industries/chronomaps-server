@@ -388,7 +388,7 @@ def cluster_screenshots(config, tag=None):
         try:
             tag_info = json.loads(content)
             set_id = tag_info['set_id']
-            set_it += 1
+            set_id += 1
             if set_id == 16:
                 set_id = 0
         except json.JSONDecodeError:
