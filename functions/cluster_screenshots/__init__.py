@@ -394,7 +394,7 @@ def cluster_screenshots(config, tag=None):
         except json.JSONDecodeError:
             pass
     blob.cache_control = 'no-cache'
-    blob.upload_from_string(json.dumps(dict(set=set_id)), content_type='application/json')
+    blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
     blob.make_public()
 
     prefix = f'{tag}/{set_id}'
