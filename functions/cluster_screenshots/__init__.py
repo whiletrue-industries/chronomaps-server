@@ -124,6 +124,7 @@ def get_image(record, target_size, pos_x, pos_y):
             mostly='mostly' in favorable_future,
             favorable_future=favorable_future,
             timestamp=record['created_at'],
+            lang=record.get('detected_language'),
             url=record.get('screenshot_url'),
         )
     else:
