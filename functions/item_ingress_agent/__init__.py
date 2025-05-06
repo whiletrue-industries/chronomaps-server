@@ -4,10 +4,10 @@ from firebase_admin import storage
 from pathlib import Path
 from config import API_KEY, CHRONOMAPS_API_URL, PRIVATE_KEY
 import os
-import base64
 import json
 import requests
-import time
+
+db = firestore.client()
 
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('ITEM_INGRESS_PROMPT.md').read_text().strip()
@@ -36,27 +36,30 @@ client = OpenAI(api_key=API_KEY)
 
 _assistant_id = None
 
-def get_assistant_id():
+def get_assistant_id(workspace, workspace_metadata):
     global _assistant_id
     if _assistant_id is not None:
         return _assistant_id
     assistants = client.beta.assistants.list()
+    agent_name = f'{AGENT_NAME}-{workspace}'
     for assistant in assistants:
-        if assistant.name == AGENT_NAME:
+        if assistant.name == agent_name:
             _assistant_id = assistant.id
             break
+    last_message = workspace_metadata.get('final-ingress-message') or "Thanks, we're all set!"
+    instructions = INSTRUCTIONS.replace('{{final-ingress-message}}', last_message)
     if _assistant_id is None:
         _assistant_id = client.beta.assistants.create(
             name=AGENT_NAME,
             model="gpt-4o",
             description="Chronomaps Item Ingress Agent",
-            instructions=INSTRUCTIONS,
+            instructions=instructions,
             tools=TOOLS,
         ).id
     else:
         client.beta.assistants.update(
             assistant_id=_assistant_id,
-            instructions=INSTRUCTIONS,
+            instructions=instructions,
             tools=TOOLS,
         )
     return _assistant_id
@@ -73,6 +76,18 @@ def fetch_item(workspace, item_id, api_key, item_key):
     item_data = response.json()
     return item_data, False
 
+
+def fetch_workspace(workspace, api_key):
+    url = os.path.join(CHRONOMAPS_API_URL, workspace)
+    response = requests.get(url, headers={'Authorization': api_key}, timeout=10)
+    if response.status_code == 403:
+        return dict(error=f"Workspace {workspace} not authorized"), 403
+    if response.status_code == 404:
+        return dict(error=f"Item {workspace} not found"), 404
+    response.raise_for_status()
+    workspace_metadata = response.json()
+    return workspace_metadata, False
+
 def update_item_properties(workspace, item_id, api_key, item_key, payload):
     url = os.path.join(CHRONOMAPS_API_URL, workspace, item_id)
     response = requests.put(url, json=payload, headers={'Authorization': api_key}, params={'item-key': item_key})
@@ -84,11 +99,36 @@ def update_item_properties(workspace, item_id, api_key, item_key, payload):
     item_data = response.json()
     return item_data, False
 
+def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key):
+    email_address = item.get(PRIVATE_KEY + 'email')
+    if not email_address:
+        print('No email address found in item properties')
+        return
+    email_template = workspace_metadata.get('email-template')
+    if not email_template:
+        print('No email template found in workspace metadata')
+        return
+    secret_link = f'https://mapfutur.es/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}'
+    message = dict(
+        to=[email_address],
+        template=dict(
+            name=email_template,
+            data=dict(
+                link=secret_link,
+            )
+        )
+    )
+    db.collection('emails').document().set(message)    
+
 def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     yield dict(kind='status', message='fetching item')
     item, error_code = fetch_item(workspace, item_id, api_key, item_key)
     if error_code:
         yield dict(kind='error', message='Failed to fetch item', code=error_code)
+        return
+    workspace_metadata, error_code = fetch_workspace(workspace, api_key)
+    if error_code:
+        yield dict(kind='error', message='Failed to fetch workspace', code=error_code)
         return
     
     new_thread = False
@@ -137,7 +177,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             yield dict(kind='status', status='completed')
             return
         
-    assistant_id = get_assistant_id()
+    assistant_id = get_assistant_id(workspace, workspace_metadata)
     stream = client.beta.threads.runs.create(
         thread_id=thread.id,
         assistant_id=assistant_id,
@@ -173,7 +213,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                                     if k in payload:
                                         payload[PRIVATE_KEY + k] = payload.pop(k)
                                 # Update item properties
-                                ret, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
+                                item, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
                                 if error:
                                     return ret, error
                             except json.JSONDecodeError as e:
@@ -208,6 +248,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 current_line = current_line.split('\n')[-1]
                 if 'DONE' in current_line:
                     yield dict(kind='status', status='done')
+                    send_email(workspace, workspace_metadata, item, item_id, item_key, api_key)
                     text = text.split('DONE')[0]
                 yield dict(kind='text', value=text)
 

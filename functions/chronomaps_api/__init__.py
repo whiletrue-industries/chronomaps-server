@@ -140,7 +140,7 @@ def update_item(workspace, item_id):
     metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
     item_ref.update({"metadata": item["metadata"]})
-    return {"message": "Item updated"}, 200
+    return item["metadata"], 200
 
 @app.delete("/<workspace>/<item_id>")
 def delete_item(workspace, item_id):
