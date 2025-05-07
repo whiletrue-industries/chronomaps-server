@@ -163,6 +163,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 role = message.role
                 if content.type == 'text':
                     text = content.text.value
+                    text = text.replace(r'\n', '\n')
                     if role == 'assistant':
                         lines = [line.strip()[:10] for line in text.split('\n') if line.strip()]
                         if any('DONE' in line for line in lines):
