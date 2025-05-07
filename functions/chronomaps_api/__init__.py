@@ -101,15 +101,21 @@ def get_items(workspace):
             items = items.where(key, op, value)
     items = items.stream()
     items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
-    items_metadata = (
-        sanitize_metadata(
-            dict(**item.get("metadata", {}), _id=item['id']),
-            exclude_private=privilege < PRIVILEGE_PRIVATE_KEY
+    try:
+        items_metadata = (
+            sanitize_metadata(
+                dict(**item.get("metadata", {}), _id=item['id']),
+                exclude_private=privilege < PRIVILEGE_PRIVATE_KEY
+            )
+            for item in items
+            if item['id'][0] != "."
         )
-        for item in items
-        if item['id'][0] != "."
-    )
-    paginated_items = list(islice(items_metadata, page * page_size, (page + 1) * page_size))
+        paginated_items = list(islice(items_metadata, page * page_size, (page + 1) * page_size))
+    except Exception as e:
+        msg = str(e)
+        if 'The query requires an index' in msg:
+            msg = 'https://' + msg.split('https://')[1].split(' ')[0]
+            return {'index-required': msg}, 412
     return paginated_items, 200
 
 @app.get("/<workspace>/<item_id>")
