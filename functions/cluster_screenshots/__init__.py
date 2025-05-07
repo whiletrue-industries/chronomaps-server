@@ -59,14 +59,15 @@ def use_item(item):
     return False
 
 def load_records(config, records):
-    params = dict(page_size=TO_PLOT*2, order_by='-created_at')
+    params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters='metadata._private_moderation > 2')
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
-        yield dict(msg=f'Got {len(items)} items.')
-        yield from ensure_embeddings(items, workspace, api_key)
-        items = [item for item in items if use_item(item)]
-        records.extend(items)
+        if isinstance(items, list):
+            yield dict(msg=f'Got {len(items)} items.')
+            yield from ensure_embeddings(items, workspace, api_key)
+            items = [item for item in items if use_item(item)]
+            records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
 def ensure_embeddings(records, workspace, api_key):
