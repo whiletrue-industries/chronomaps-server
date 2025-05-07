@@ -1,3 +1,4 @@
+import json
 from firebase_admin import firestore
 import flask
 import uuid
@@ -93,6 +94,10 @@ def get_items(workspace):
         filters = filters.split("|")
         for filter in filters:
             key, op, value = filter.split(None, 2)
+            try:
+                value = json.loads(value)
+            except:
+                pass
             items = items.where(key, op, value)
     items = items.stream()
     items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
