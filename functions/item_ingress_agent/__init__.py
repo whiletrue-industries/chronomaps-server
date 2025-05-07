@@ -201,8 +201,12 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 run = event.data
                 tool_outputs = []
                 for tool in run.required_action.submit_tool_outputs.tool_calls:
+                    msg = dict(kind='tool')
                     try:
+                        msg['arguments'] = tool.function.arguments
                         arguments = json.loads(tool.function.arguments)
+                        msg['arguments'] = arguments
+                        msg['name'] = tool.function.name
 
                         # Handle different tool types
                         if tool.function.name == 'update_properties':
@@ -235,6 +239,8 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                         ret = dict(
                             error=f"Invalid tool call: {tool.function.name}, please check the arguments and try again."
                         )
+                    msg['retval'] = ret
+                    yield msg
                     tool_outputs.append(dict(
                         tool_call_id=tool.id,
                         output=json.dumps(ret, ensure_ascii=False, indent=2)
