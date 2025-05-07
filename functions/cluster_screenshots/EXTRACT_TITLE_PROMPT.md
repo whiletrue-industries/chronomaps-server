@@ -14,7 +14,7 @@ Participants are provided with a few distinct paper templates resembling mobile 
 
 Each template includes a "transition bar" where participants specify a significant change or event (e.g., "peace process," "regional war") and indicate whether the screenshot is set before, during, or after this transition. 
 
-An AI already analyzed these submissions and extracted a tagline and topics for each submission.
+An AI already analyzed these submissions and extracted a tagline for each submission.
 
 Below is a list of such taglines extracted from a few submissions.
 Find the overarching theme that connects these taglines, and return it as a single string - in 3 words (or less), in a few languages.
@@ -32,4 +32,7 @@ The response should be in the following format:
 ```
 The keys should be exactly these four languages (english, dutch, hebrew, arabic) and the values should be the exact translations of the answer in the respective languages.
 
+:PREVIOUS:
+
+The taglines to analyze are:
 :TAGLINES:

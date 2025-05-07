@@ -254,12 +254,15 @@ def create_tiles(prefix: str, image: Image):
                     executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y)
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
-def extract_cluster_title(client, taglines):
-    prompt = f'''{EXTRACT_TITLE_INSTRUCTIONS}
+def extract_cluster_title(client, taglines, previous=None):
+    taglines = f'- {"\n- ".join(taglines)}'
+    if previous:
+        previous = f'- {"\n- ".join(previous)}'
+        previous = 'Avoid repeating these previous themes - be more exact and specific if possible to make sure the title is unique and distinguishable:\n' + previous
+    else:
+        previous = ''
+    prompt = EXTRACT_TITLE_INSTRUCTIONS.replace(':TAGLINES:', taglines).replace(':PREVIOUS:', previous)
 
-List of submission taglines:
-- {"\n- ".join(taglines)}
-'''
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -305,6 +308,7 @@ def find_clusters(records, tsne, info):
     label_counts.sort(key=lambda x: x[1], reverse=True)
     total = 0
     titles = []
+    previous = []
 
     for label, count, indexes, members in label_counts:
         if count < 3:
@@ -312,7 +316,8 @@ def find_clusters(records, tsne, info):
         yield dict(msg=f'Cluster {label} size: {count}, {count / len(records) * 100:.2f}% of total')
         taglines = [member['future_scenario_description'] for member in members]
 
-        title = extract_cluster_title(client, taglines)
+        title = extract_cluster_title(client, taglines, previous)
+        previous.append(title['english'])
         cluster_positions = [
             record_positions[member['_id']]
             for member in members
