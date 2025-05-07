@@ -50,8 +50,8 @@ def get_assistant_id(workspace, workspace_metadata):
     instructions = INSTRUCTIONS.replace('{{final-ingress-message}}', last_message)
     if _assistant_id is None:
         _assistant_id = client.beta.assistants.create(
-            name=AGENT_NAME,
-            model="gpt-4o",
+            name=agent_name,
+            model="gpt-4.1",
             description="Chronomaps Item Ingress Agent",
             instructions=instructions,
             tools=TOOLS,
@@ -235,9 +235,9 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                             ret = dict(
                                 error=f"Unknown tool call: {tool.function.name}, only 'update_properties' is supported"
                             )
-                    except:
+                    except Exception as e:
                         ret = dict(
-                            error=f"Invalid tool call: {tool.function.name}, please check the arguments and try again."
+                            error=f"Invalid tool call: {tool.function.name}, please check the arguments and try again. ({e})"
                         )
                     msg['retval'] = ret
                     yield msg
