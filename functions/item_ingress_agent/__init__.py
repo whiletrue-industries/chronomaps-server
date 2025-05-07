@@ -201,34 +201,39 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 run = event.data
                 tool_outputs = []
                 for tool in run.required_action.submit_tool_outputs.tool_calls:
-                    arguments = json.loads(tool.function.arguments)
+                    try:
+                        arguments = json.loads(tool.function.arguments)
 
-                    # Handle different tool types
-                    if tool.function.name == 'update_properties':
-                        payload = arguments.get('payload')
-                        if payload:
-                            print('PAYLOAD:', payload)
-                            try:
-                                payload = json.loads(payload)
-                                for k in ['email']:
-                                    if k in payload:
-                                        payload[PRIVATE_KEY + k] = payload.pop(k)
-                                # Update item properties
-                                item, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
-                                if error:
-                                    return error
-                                ret = dict(success=True)
-                            except json.JSONDecodeError as e:
+                        # Handle different tool types
+                        if tool.function.name == 'update_properties':
+                            payload = arguments.get('payload')
+                            if payload:
+                                print('PAYLOAD:', payload)
+                                try:
+                                    payload = json.loads(payload)
+                                    for k in ['email']:
+                                        if k in payload:
+                                            payload[PRIVATE_KEY + k] = payload.pop(k)
+                                    # Update item properties
+                                    item, error = update_item_properties(workspace, item_id, api_key, item_key, payload)
+                                    if error:
+                                        return error
+                                    ret = dict(success=True)
+                                except json.decoder.JSONDecodeError as e:
+                                    ret = dict(
+                                        error=f"Invalid JSON payload as argument: {e}, maybe try updating one property at a time."
+                                    )
+                            else:
                                 ret = dict(
-                                    error=f"Invalid JSON payload as argument: {e}, maybe try updating one property at a time."
+                                    error="Missing payload in update_properties tool call"
                                 )
                         else:
                             ret = dict(
-                                error="Missing payload in update_properties tool call"
+                                error=f"Unknown tool call: {tool.function.name}, only 'update_properties' is supported"
                             )
-                    else:
+                    except:
                         ret = dict(
-                            error=f"Unknown tool call: {tool.function.name}, only 'update_properties' is supported"
+                            error=f"Invalid tool call: {tool.function.name}, please check the arguments and try again."
                         )
                     tool_outputs.append(dict(
                         tool_call_id=tool.id,
