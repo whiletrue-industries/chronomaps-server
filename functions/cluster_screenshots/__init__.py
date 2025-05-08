@@ -61,7 +61,8 @@ def use_item(item):
 def load_records(config, records):
     for workspace, api_key, *extra in config:
         if extra:
-            moderation_range = ','.join(str(i) for i in range(extra[0], 6))
+            min_range = int(extra[0])
+            moderation_range = ','.join(str(i) for i in range(min_range, 6))
             params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
             yield dict(msg=f'Fetching from {workspace}... ({moderation_range})')
         else:
