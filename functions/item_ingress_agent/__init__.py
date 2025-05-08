@@ -31,6 +31,7 @@ TOOLS = [
         )
     )
 ]
+OPERATION_TIMEOUT = 30
 
 client = OpenAI(api_key=API_KEY)
 
@@ -40,7 +41,7 @@ def get_assistant_id(workspace, workspace_metadata):
     global _assistant_id
     if _assistant_id is not None:
         return _assistant_id
-    assistants = client.beta.assistants.list()
+    assistants = client.beta.assistants.list(timeout=OPERATION_TIMEOUT)
     agent_name = f'{AGENT_NAME}-{workspace}'
     for assistant in assistants:
         if assistant.name == agent_name:
@@ -55,12 +56,14 @@ def get_assistant_id(workspace, workspace_metadata):
             description="Chronomaps Item Ingress Agent",
             instructions=instructions,
             tools=TOOLS,
+            timeout=OPERATION_TIMEOUT
         ).id
     else:
         client.beta.assistants.update(
             assistant_id=_assistant_id,
             instructions=instructions,
             tools=TOOLS,
+            timeout=OPERATION_TIMEOUT
         )
     return _assistant_id
 
@@ -90,7 +93,7 @@ def fetch_workspace(workspace, api_key):
 
 def update_item_properties(workspace, item_id, api_key, item_key, payload):
     url = os.path.join(CHRONOMAPS_API_URL, workspace, item_id)
-    response = requests.put(url, json=payload, headers={'Authorization': api_key}, params={'item-key': item_key})
+    response = requests.put(url, json=payload, headers={'Authorization': api_key}, params={'item-key': item_key}, timeout=OPERATION_TIMEOUT)
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized updating items with this key"), 403
     if response.status_code == 404:
@@ -133,19 +136,25 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
     
     new_thread = False
     thread_id = item.pop(PRIVATE_KEY + 'ingress-thread-id', None)
-    if not thread_id:
+    thread = None
+    if thread_id:
+        try:
+            yield dict(kind='status', message='fetching thread', thread_id=thread_id)
+            thread = client.beta.threads.retrieve(thread_id, timeout=OPERATION_TIMEOUT)
+        except Exception as e:
+            yield dict(kind='error', message='Failed to fetch thread', code=error_code)
+    if not thread:
         new_thread = True
         item_json = json.dumps(item, indent=2, ensure_ascii=False)
         yield dict(kind='status', message='creating thread')
-        thread = client.beta.threads.create()
+        thread = client.beta.threads.create(timeout=OPERATION_TIMEOUT)
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role='user',
             content=item_json,
+            timeout=OPERATION_TIMEOUT
         )
     else:
-        yield dict(kind='status', message='fetching thread', thread_id=thread_id)
-        thread = client.beta.threads.retrieve(thread_id)
         yield dict(kind='status', message='got thread', thread_id=thread_id)
         if message != 'initial':
             yield dict(kind='status', message='creating message', thread_id=thread_id)
@@ -153,8 +162,9 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 thread_id=thread.id,
                 role='user',
                 content=message,
+                timeout=OPERATION_TIMEOUT
             )
-        messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc')
+        messages = client.beta.threads.messages.list(thread_id=thread.id, order='asc', timeout=OPERATION_TIMEOUT)
         role = None
         idx = 0
         yield dict(kind='status', message=f'got messages', thread_id=thread_id)
@@ -183,6 +193,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
         thread_id=thread.id,
         assistant_id=assistant_id,
         stream=True,
+        timeout=OPERATION_TIMEOUT
     )
 
     while stream:
@@ -195,6 +206,8 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 break
             elif event.event == 'thread.run.failed':
                 yield dict(kind='status', status='failed', error=event.data.last_error)
+                if thread:
+                    client.beta.threads.delete(thread.id)
                 stream = None
                 break
             elif event.event == 'thread.run.requires_action':
@@ -250,7 +263,8 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                     thread_id=thread.id,
                     run_id=run.id,
                     tool_outputs=tool_outputs,
-                    stream=True
+                    stream=True,
+                    timeout=OPERATION_TIMEOUT
                 )
             elif event.event == 'thread.message.delta':
                 text = ''
