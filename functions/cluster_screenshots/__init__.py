@@ -63,9 +63,10 @@ def load_records(config, records):
         if extra:
             moderation_range = ','.join(str(i) for i in range(extra[0], 6))
             params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
+            yield dict(msg=f'Fetching from {workspace}... ({moderation_range})')
         else:
             params = dict(page_size=TO_PLOT*2, order_by='-created_at')
-        yield dict(msg=f'Fetching from {workspace}...')
+            yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
         if isinstance(items, list):
             yield dict(msg=f'Got {len(items)} items.')
