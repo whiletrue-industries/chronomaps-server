@@ -384,7 +384,7 @@ def convert_all_coords(info):
 
 def cluster_screenshots(config, tag=None):
     config = config.split(';') if config else []
-    config = [c.split(':') for c in config]
+    config = [c.strip().split(':') for c in config if c.strip()]
 
     if tag is None:
         if len(config) > 0:
