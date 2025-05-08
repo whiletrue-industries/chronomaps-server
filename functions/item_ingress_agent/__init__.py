@@ -120,7 +120,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     )
     db.collection('emails').document().set(message)    
 
-def item_ingress_agent(workspace, item_id, api_key, item_key, message):
+def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
     yield dict(kind='status', message='fetching item')
     item, error_code = fetch_item(workspace, item_id, api_key, item_key)
     if error_code:
@@ -194,7 +194,7 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
                 stream = None
                 break
             elif event.event == 'thread.run.failed':
-                yield dict(kind='status', status='failed')
+                yield dict(kind='status', status='failed', error=event.data.last_error)
                 stream = None
                 break
             elif event.event == 'thread.run.requires_action':
@@ -271,3 +271,15 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
             PRIVATE_KEY + 'ingress-thread-id': thread.id
         })
         print('Updated item with new thread_id:', updated)
+
+
+def item_ingress_agent(workspace, item_id, api_key, item_key, message):
+    """
+    This function is a generator that processes an item ingress request.
+    It fetches the item and workspace metadata, creates or updates a thread,
+    and streams the response from the OpenAI API.
+    """
+    try:
+        yield from item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message)
+    except Exception as e:
+        yield dict(kind='status', status='failed', error=str(e))
