@@ -59,8 +59,12 @@ def use_item(item):
     return False
 
 def load_records(config, records):
-    params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters='metadata._private_moderation in [3,4,5]')
-    for workspace, api_key in config:
+    for workspace, api_key, *extra in config:
+        if extra:
+            moderation_range = ','.join(str(i) for i in range(extra[0], 6))
+            params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
+        else:
+            params = dict(page_size=TO_PLOT*2, order_by='-created_at')
         yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
         if isinstance(items, list):
