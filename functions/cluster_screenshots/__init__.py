@@ -263,7 +263,7 @@ def extract_cluster_title(client, taglines, previous=None):
     taglines = f'- {"\n- ".join(taglines)}'
     if previous:
         previous = f'- {"\n- ".join(previous)}'
-        previous = 'Avoid repeating these previous themes - be more exact and specific if possible to make sure the title is unique and distinguishable:\n' + previous
+        previous = 'Avoid repeating these themes - be more exact and specific if possible to make sure your response is unique and clearly distinguishable from the following:\n' + previous
     else:
         previous = ''
     prompt = EXTRACT_TITLE_INSTRUCTIONS.replace(':TAGLINES:', taglines).replace(':PREVIOUS:', previous)
