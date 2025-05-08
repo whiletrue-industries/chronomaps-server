@@ -59,7 +59,7 @@ def use_item(item):
     return False
 
 def load_records(config, records):
-    params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters='metadata._private_moderation > 2')
+    params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters='metadata._private_moderation in [3,4,5]')
     for workspace, api_key in config:
         yield dict(msg=f'Fetching from {workspace}...')
         items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
