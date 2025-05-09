@@ -25,7 +25,7 @@ The response should be a JSON object that adheres to the following structure:
 
 ```json
 {
-  "screenshot_type": "social_media_post/chat_conversation/notification_alert/ai_agent_query/map_visualization/photograph/review/sign_in_a_demonstration/unclear",
+  "screenshot_type": "social_media_post/chat_conversation/notification_alert/ai_agent_query/map_visualization/photograph/review/sign_in_a_demonstration/dating_app/unclear",
   "transition_bar_transition_event": "description of the transition event",
   "transition_bar_before_during_after": "MUST BE one of: 'before'/'during'/'after'/'unclear'",
   "transition_bar_certainty": <0-100>, # a score indicating how certain you are with your understanding of the written text and the before/during/after selection. 100 is very certain, 0 is not certain at all or no text or markings were decipherable.
