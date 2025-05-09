@@ -58,7 +58,7 @@ endpoints:
     httpsTrigger: {}
     ingressSettings: null
     labels: {}
-    maxInstances: null
+    maxInstances: 4
     minInstances: null
     platform: gcfv2
     region:
@@ -67,7 +67,7 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     - key: OPENAI_API_KEY
     serviceAccountEmail: null
-    timeoutSeconds: 180
+    timeoutSeconds: 30
   screenshot_handler:
     availableMemoryMb: 512
     concurrency: null
