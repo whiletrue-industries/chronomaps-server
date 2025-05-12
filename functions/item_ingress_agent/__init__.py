@@ -189,12 +189,18 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
             return
         
     assistant_id = get_assistant_id(workspace, workspace_metadata)
-    stream = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant_id,
-        stream=True,
-        timeout=OPERATION_TIMEOUT
-    )
+    try:
+        stream = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=assistant_id,
+            stream=True,
+            timeout=OPERATION_TIMEOUT
+        )
+    except Exception as e:
+        yield dict(kind='status', status='failed', location='threads.runs.create', error=str(e))
+        if thread:
+            client.beta.threads.delete(thread.id)
+        return
 
     while stream:
         current_line = ''
@@ -205,7 +211,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 stream = None
                 break
             elif event.event == 'thread.run.failed':
-                yield dict(kind='status', status='failed', error=event.data.last_error)
+                yield dict(kind='status', status='failed', location='thread.run.failed', error=event.data.last_error)
                 if thread:
                     client.beta.threads.delete(thread.id)
                 stream = None
@@ -296,4 +302,4 @@ def item_ingress_agent(workspace, item_id, api_key, item_key, message):
     try:
         yield from item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message)
     except Exception as e:
-        yield dict(kind='status', status='failed', error=str(e))
+        yield dict(kind='status', status='failed', location='item_ingress_agent', error=str(e))
