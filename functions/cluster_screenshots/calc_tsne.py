@@ -8,7 +8,7 @@ from openai import OpenAI
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
 
-from tsne_params import TSNEParams
+from cluster_screenshots.tsne_params import TSNEParams
 try:
     from lapjv import lapjv
 except ImportError:
