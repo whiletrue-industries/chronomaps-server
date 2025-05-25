@@ -2,7 +2,7 @@ from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
 from pathlib import Path
-from config import API_KEY, CHRONOMAPS_API_URL, PRIVATE_KEY
+from config import OPENAI_KEY, CHRONOMAPS_API_URL, PRIVATE_KEY
 import os
 import json
 import requests
@@ -33,7 +33,7 @@ TOOLS = [
 ]
 OPERATION_TIMEOUT = 30
 
-client = OpenAI(api_key=API_KEY)
+client = OpenAI(api_key=OPENAI_KEY)
 
 _assistant_id = None
 

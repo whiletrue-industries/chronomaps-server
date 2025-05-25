@@ -13,6 +13,10 @@ from openai import OpenAI
 
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
+
+from tsne_params import TSNEParams
+from calc_tsne import cluster_screenshots_inner
+
 try:
     from lapjv import lapjv
 except ImportError:
@@ -21,25 +25,9 @@ from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
 
-from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
+from config import OPENAI_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 
 bucket = storage.bucket(name=BUCKET_NAME)
-
-EMBEDDING_DIMENSION = 3072
-PERPLEXITY = 50
-TSNE_ITER = 5000
-ORIGINAL_IMAGE_SIZE = (530, 1000)
-CELL_RATIOS = (1.86, 1.135)
-BG_COLOR = (255, 253, 246)
-
-# OUT_DIM_X = 30
-# OUT_RATIO = 9/16
-OUT_DIM_X = 23
-OUT_RATIO = 1.0
-OUT_DIM_Y = int(math.ceil(OUT_DIM_X * ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0] * OUT_RATIO / (ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1])))
-out_dim = (OUT_DIM_X, OUT_DIM_Y)
-TO_PLOT = int(OUT_DIM_X * OUT_DIM_Y * 0.75)
-PADDING_RATIO = 0.5
 
 EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
 
@@ -48,178 +36,8 @@ class ThreadPoolExecutorWithQueueSizeLimit(concurrent.futures.ThreadPoolExecutor
         super().__init__(*args, max_workers=32, **kwargs)
         self._work_queue = queue.Queue(maxsize=maxsize)
 
-def use_item(item):
-    favorable_future = item.get('favorable_future')
-    if not favorable_future:
-        return False
-    if favorable_future in ['yes', 'no']:
-        return True
-    if 'prevent' in favorable_future or 'prefer' in favorable_future:
-        return True
-    return False
-
-def load_records(config, records):
-    for workspace, api_key, *extra in config:
-        if extra:
-            min_range = int(extra[0])
-            moderation_range = ','.join(str(i) for i in range(min_range, 6))
-            params = dict(page_size=TO_PLOT*2, order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
-            yield dict(msg=f'Fetching from {workspace}... ({moderation_range})')
-        else:
-            params = dict(page_size=TO_PLOT*2, order_by='-created_at')
-            yield dict(msg=f'Fetching from {workspace}...')
-        items = requests.get(f'{CHRONOMAPS_API_URL}/{workspace}/items', params, headers={'Authorization': api_key}).json()
-        if isinstance(items, list):
-            yield dict(msg=f'Got {len(items)} items.')
-            yield from ensure_embeddings(items, workspace, api_key)
-            items = [item for item in items if use_item(item)]
-            records.extend(items)
-    records.sort(key=lambda x: x['created_at'], reverse=True)
-
-def ensure_embeddings(records, workspace, api_key):
-    openai = OpenAI(api_key=API_KEY)
-    for i, record in enumerate(records):
-        if i % 100 == 0:
-            yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
-        if 'embedding' in record:
-            continue
-        description = record['future_scenario_description']
-        completion = openai.embeddings.create(
-            model="text-embedding-3-large",
-            input=description
-        )
-        embedding = completion.data[0].embedding
-        record['embedding'] = embedding
-        item_id = record['_id']
-        requests.put(f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
-
-def generate_tsne(activations, perplexity=50, tsne_iter=5000):
-    tsne = TSNE(perplexity=perplexity, n_components=2, init='random', max_iter=tsne_iter)
-    X_2d = tsne.fit_transform(np.array(activations))
-    X_2d -= X_2d.min(axis=0)
-    X_2d /= X_2d.max(axis=0)
-    return X_2d
-
-def calc_tsne_grid(X_2d, out_dim):
-    grid = np.dstack(np.meshgrid(np.linspace(0, 1, out_dim[1]), np.linspace(0, 1, out_dim[0]))).reshape(-1, 2)
-    cost_matrix = cdist(grid, X_2d, "sqeuclidean").astype(np.float32)
-    cost_matrix = cost_matrix * (100000 / cost_matrix.max())
-    shp = cost_matrix.shape
-    cost_matrix = np.hstack((cost_matrix, np.zeros((shp[0], shp[0] - shp[1]))))
-    _, col_asses, _ = lapjv(cost_matrix)
-    grid_jv = grid[col_asses]
-    return grid_jv
-
-def get_image(record, target_size, pos_x, pos_y):
-    # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
-    metadata = dict()
-    if record is not None:
-        filename = record.get('screenshot_url')
-        filename = filename.replace('https://storage.googleapis.com/chronomaps3.firebasestorage.app', 'https://storage.googleapis.com/chronomaps3-eu')
-        rotate = record.get('plausibility') or 100
-        rotate = (100 - rotate) / 100 * 32
-        favorable_future = record.get('favorable_future')
-        sign = 0
-        if favorable_future == 'yes' or 'prefer' in favorable_future:
-            sign = 1
-        elif favorable_future == 'no' or 'prevent' in favorable_future:
-            sign = -1
-        rotate = sign * rotate
-        metadata = dict(
-            rotate=rotate,
-            sign=sign,
-            mostly='mostly' in favorable_future,
-            favorable_future=favorable_future,
-            timestamp=record['created_at'],
-            lang=record.get('detected_language'),
-            url=record.get('screenshot_url'),
-        )
-    else:
-        filename = None
-        rotate = (521 * pos_x + 967 * pos_y) % 64 - 32   # Pseudo-random rotation
-    inner_target_size = int(target_size[0] / CELL_RATIOS[0]), int(target_size[1] / CELL_RATIOS[1])
-    if not filename:
-        filename = Path(__file__).with_name('empty-space.png')
-        img = Image.open(filename)
-        _image = Image.new("RGBA", img.size, "WHITE") 
-        _image.paste(img, (0, 0), img)         
-        img = _image.convert('RGB')
-        img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-    else:
-        try:
-            img = Image.open(requests.get(filename, stream=True).raw)
-        except:
-            print('Error opening image:', filename)
-            raise
-        ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
-        # resize the image by ratio:
-        img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
-        # crop the image to the target size out the center
-        img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
-                        img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
-        img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-    img = img.rotate(rotate, expand=True, fillcolor=BG_COLOR)
-    out_img = Image.new('RGB', target_size, BG_COLOR)
-    assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
-    assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
-    out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    return out_img, metadata
-
-def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out):
-    # print('>>>', filename)
-
-    out_res_x, out_res_y = res
-    offset_x, offset_y = offset
-    padding_x, padding_y = padding
-
-    info = dict(
-        dim=out_dim,
-        grid=[],
-        padding_ratio=PADDING_RATIO,
-        conversion_ratio=(out_res_x / 256, out_res_y / 256),
-        cell_ratios=CELL_RATIOS
-    )
-
-    out = np.ones((out_dim[1]*out_res_y + padding_y, out_dim[0]*out_res_x + padding_x, 3), dtype=np.uint8) * np.array(BG_COLOR, dtype=np.uint8)
-    positions = dict()
-    for pos, record in zip(grid_jv, records):
-        pos_x = round(pos[1] * (out_dim[0] - 1))# + img_ofs
-        pos_y = round(pos[0] * (out_dim[1] - 1))# + img_ofs
-        pos = (int(pos_y), int(pos_x))
-        positions[pos] = record
-    for pos_x in range(out_dim[0]):
-        yield dict(msg=f'Creating image: {pos_x}/{out_dim[0]}')
-        for pos_y in range(out_dim[1]):
-            pos = (pos_y, pos_x)
-            record = positions.get(pos)
-            img, metadata = get_image(record, res, pos_x, pos_y)
-            if callable(offset_x):
-                _offset_x = offset_x(pos_x, pos_y)
-            else:
-                _offset_x = offset_x
-            if callable(offset_y):
-                _offset_y = offset_y(pos_x, pos_y)
-            else:
-                _offset_y = offset_y
-            h_range = pos_y * out_res_y + _offset_y
-            w_range = pos_x * out_res_x + _offset_x
-            out[h_range:h_range + out_res_y, w_range:w_range + out_res_x] = img
-            if callable(pos_offset[0]):
-                pos_offset_x = pos_offset[0](pos_x, pos_y)
-            else:
-                pos_offset_x = pos_offset[0]
-            if callable(pos_offset[1]):
-                pos_offset_y = pos_offset[1](pos_x, pos_y)
-            else:
-                pos_offset_y = pos_offset[1]
-            if record is not None:
-                info['grid'].append(dict(pos=[pos_x + pos_offset_x, pos_y + pos_offset_y], id=record['_id'], metadata=metadata))
-
-    tsne_out['image'] = out
-    tsne_out['info'] = info
-
-def upload_image(image, tile_size, w, h, prefix, zoom, x, y):
-    target = Image.new('RGB', (tile_size, tile_size), BG_COLOR)
+def upload_image(image, tile_size, w, h, prefix, zoom, x, y, params: TSNEParams):
+    target = Image.new('RGB', (tile_size, tile_size), params.BG_COLOR)
     left = min(x * tile_size, w)
     upper = min(y * tile_size, h)
     right = min(left + tile_size, w)
@@ -258,7 +76,7 @@ def create_tiles(prefix: str, image: Image):
                 # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
                 yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles[0]}")
                 for y in range(_num_tiles[1]):
-                    executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y)
+                    executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y, params)
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
 
 def extract_cluster_title(client, taglines, previous=None):
@@ -291,7 +109,7 @@ def extract_cluster_title(client, taglines, previous=None):
     return content
 
 def find_clusters(records, tsne, info):
-    client = OpenAI(api_key=API_KEY)
+    client = OpenAI(api_key=OPENAI_KEY)
     clustering = AgglomerativeClustering(n_clusters=10, metric='euclidean', distance_threshold=None, linkage='ward')
     clustering.fit(tsne)
     labels = clustering.labels_
@@ -353,15 +171,6 @@ def find_clusters(records, tsne, info):
             break
     info['clusters'] = titles
 
-def get_side(ratio, dim):
-    i = 0
-    while True:
-        tiles = 2**i
-        side = int(tiles * 256 / dim * ratio)
-        if side >= 1000:
-            return side
-        i += 1
-
 def convert_coords(coords, conversion_ratio):
     x, y = coords
     conv_x, conv_y = conversion_ratio
@@ -384,16 +193,19 @@ def convert_all_coords(info):
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
         grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
-def cluster_screenshots(config, tag=None):
+def cluster_screenshots(config):
     config = config.split(';') if config else []
     config = [c.strip().split(':') for c in config if c.strip()]
+    params = TSNEParams(
+        OPENAI_KEY=OPENAI_KEY,
+        CHRONOMAPS_API_URL=CHRONOMAPS_API_URL,
+    )
 
     if tag is None:
         if len(config) > 0:
             tag = config[0][0]
         else:
             tag = 'empty'
-
 
     global_config_blob = bucket.blob(f'tiles/{tag}/config.json')
     set_id = 0
@@ -411,58 +223,28 @@ def cluster_screenshots(config, tag=None):
 
     prefix = f'{tag}/{set_id}'
 
-    records = []
-    yield from load_records(config, records)
-    records = records[:TO_PLOT]
+    for msg in cluster_screenshots_inner(config, params):
+        yield msg
+        if 'action' in msg:
+            if msg['action'] == 'tiles':
+                yield from create_tiles(prefix, msg['image'])
+            if msg['action'] == 'clusters':
+                info = msg['info']
+                records = msg['records']
+                grid = msg['grid']
+                if len(records) > 0:
+                    yield from find_clusters(records, grid, info)
 
-    records, activations = records, [rec['embedding'] for rec in records]
+                convert_all_coords(info)
 
-    if len(records) > 0:
-        yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-        X_2d = generate_tsne(activations, perplexity=PERPLEXITY, tsne_iter=TSNE_ITER)
-        yield dict(msg="Generating image grid (%dx%d, %d images" % (out_dim[0], out_dim[1], len(records)))
-        grid = calc_tsne_grid(X_2d, out_dim)
-        grid = grid[:len(records)]
-        yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
-    else:
-        grid = []
+                blob = bucket.blob(f'tiles/{prefix}/config.json')
+                blob.cache_control = 'no-cache'
+                blob.upload_from_string(json.dumps(info), content_type='application/json')
+                blob.make_public()
 
-    try:
-        # w, h = 530, 1000
-        w, h = ORIGINAL_IMAGE_SIZE[0] * CELL_RATIOS[0], ORIGINAL_IMAGE_SIZE[1] * CELL_RATIOS[1]
-        dim = max(w, h)
-        side = 1000 # get_side(w/dim, OUT_DIM_X)
-        res = (int(side*w/dim), int(side*h/dim))
-        padding_y = int(res[1] * PADDING_RATIO)
-        offset = (0, lambda x, _: padding_y * (x%2))
-        pos_offset = (0, lambda x, _: PADDING_RATIO * (x%2))
-        padding = (0, padding_y)
-        yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
-        tsne = {}
-        yield from create_tsne_image(grid, records, out_dim, res, offset, padding, pos_offset, tsne)
-        image, info = tsne['image'], tsne['info']
-        yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
-        image = Image.fromarray(image)
-        yield dict(msg="Creating tiles.")        
-        yield from create_tiles(prefix, image)
-        yield dict(msg='Processing complete.')
+                global_config_blob.cache_control = 'no-cache'
+                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
+                global_config_blob.make_public()
 
-        if len(records) > 0:
-            yield from find_clusters(records, grid, info)
-
-        convert_all_coords(info)
-
-        blob = bucket.blob(f'tiles/{prefix}/config.json')
-        blob.cache_control = 'no-cache'
-        blob.upload_from_string(json.dumps(info), content_type='application/json')
-        blob.make_public()
-
-        global_config_blob.cache_control = 'no-cache'
-        global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
-        global_config_blob.make_public()
-
-        yield dict(msg=f'Config uploaded: {blob.public_url}')
-    except Exception as e:
-        yield dict(msg="Error generating image:", error=str(e))
-        raise
+                yield dict(msg=f'Config uploaded: {blob.public_url}')
 

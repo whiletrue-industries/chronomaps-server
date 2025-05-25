@@ -4,7 +4,7 @@ from openai import OpenAI
 from firebase_admin import storage
 from firebase_functions.params import SecretParam
 from pathlib import Path
-from config import API_KEY, CHRONOMAPS_API_URL, BUCKET_NAME, PRIVATE_KEY
+from config import OPENAI_KEY, CHRONOMAPS_API_URL, BUCKET_NAME, PRIVATE_KEY
 import os
 import base64
 import json
@@ -13,7 +13,7 @@ import requests
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 AUTOMATIC_INSTRUCTIONS = Path(__file__).with_name('AUTOMATIC_SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
-client = OpenAI(api_key=API_KEY)
+client = OpenAI(api_key=OPENAI_KEY)
 
 bucket = storage.bucket(name=BUCKET_NAME)
 
@@ -47,7 +47,11 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     content = completion.choices[0].message.content
     if not content:
         print('COMPLETION:', completion.choices[0].message.to_dict())
-        record = dict(content="Couldn't understand anything from the screenhsot")
+        record = dict(
+            content="Couldn't understand anything from the screenshot",
+            created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            automatic=automatic,
+        )
     else:
         content = content.split('{', 1)[1]
         content = content.rsplit('}', 1)[0]
