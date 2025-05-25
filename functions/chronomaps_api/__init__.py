@@ -85,11 +85,13 @@ def get_items(workspace):
     order_by = flask.request.args.get("order_by", "-created_at")
     filters = flask.request.args.get("filters", type=str)
     direction = firestore.Query.ASCENDING
-    if order_by.startswith("-"):
-        order_by = order_by[1:]
-        direction = firestore.Query.DESCENDING
-    order_by = 'metadata.' + order_by
-    items = db.collection(workspace).order_by(order_by, direction=direction)
+    items = db.collection(workspace)
+    if order_by:
+        if order_by.startswith("-"):
+            order_by = order_by[1:]
+            direction = firestore.Query.DESCENDING
+        order_by = 'metadata.' + order_by
+        items = items.order_by(order_by, direction=direction)
     if filters:
         filters = filters.split("|")
         for filter in filters:

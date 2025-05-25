@@ -23,6 +23,8 @@ def use_item(item):
         return True
     if 'prevent' in favorable_future or 'prefer' in favorable_future:
         return True
+    if 'future_scenario_description' not in item or not item['future_scenario_description']:
+        return False
     return False
 
 def load_records(config, records, params: TSNEParams):
@@ -272,11 +274,12 @@ if __name__ == '__main__':
     print(f'Configs: {configs}')
 
     params = TSNEParams(
-        OUT_RATIO = 43/25,
+        OUT_RATIO = 25/43,
         OUT_DIM_X = 32,
         CHRONOMAPS_API_URL='https://chronomaps-api-qjzuw7ypfq-ez.a.run.app',
         OPENAI_KEY=os.environ.get('OPENAI_KEY'),
         LOCAL= True,
+        FILL_RATIO = 0.9
     )
 
     for item in cluster_screenshots_inner(configs, params):
