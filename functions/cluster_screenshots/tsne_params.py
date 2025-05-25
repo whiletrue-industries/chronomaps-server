@@ -14,7 +14,7 @@ class TSNEParams():
     OUT_RATIO: float = 1.0
     PADDING_RATIO: float = 0.5
     FILL_RATIO: float = 0.75
-    SIDE: int = 1000
+    SIDE: int = 1600
     TAG: str = None
     LOCAL: bool = False
 
@@ -22,6 +22,6 @@ class TSNEParams():
     CHRONOMAPS_API_URL: str = None
 
     def __post_init__(self):
-        self.OUT_DIM_Y = int(math.ceil(self.OUT_DIM_X * self.ORIGINAL_IMAGE_SIZE[0] * self.CELL_RATIOS[0] * self.OUT_RATIO / (self.ORIGINAL_IMAGE_SIZE[1] * self.CELL_RATIOS[1])))
+        self.OUT_DIM_Y = int(math.round(self.OUT_DIM_X * self.ORIGINAL_IMAGE_SIZE[0] * self.CELL_RATIOS[0] * self.OUT_RATIO / (self.ORIGINAL_IMAGE_SIZE[1] * self.CELL_RATIOS[1])))
         self.OUT_DIM = (self.OUT_DIM_X, self.OUT_DIM_Y)
         self.TO_PLOT = int(self.OUT_DIM_X * self.OUT_DIM_Y * self.FILL_RATIO)

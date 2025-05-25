@@ -82,10 +82,12 @@ def get_items(workspace):
     privilege = authenticate(workspace, key, ["admin", "collaborate", "view"])
     page = flask.request.args.get("page", 0, type=int)
     page_size = flask.request.args.get("page_size", 10, type=int)
-    order_by = flask.request.args.get("order_by", "-created_at")
+    order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
     direction = firestore.Query.ASCENDING
     items = db.collection(workspace)
+    if order_by is None:
+        order_by = "-created_at"
     if order_by:
         if order_by.startswith("-"):
             order_by = order_by[1:]
