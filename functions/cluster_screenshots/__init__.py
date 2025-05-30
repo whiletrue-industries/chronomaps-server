@@ -224,7 +224,6 @@ def cluster_screenshots(config, tag=None):
     prefix = f'{tag}/{set_id}'
 
     for msg in cluster_screenshots_inner(config, params):
-        yield msg
         if 'action' in msg:
             if msg['action'] == 'tiles':
                 yield from create_tiles(prefix, msg['image'])
@@ -247,4 +246,6 @@ def cluster_screenshots(config, tag=None):
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')
+            else:
+                yield msg
 
