@@ -74,6 +74,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     config = req.args.get('config')
     tag = req.args.get('tag')
     start = time.time()
+    
     def generate():
         for bit in cluster_screenshots_fn(config, tag=tag):
             delta = int(time.time() - start)
