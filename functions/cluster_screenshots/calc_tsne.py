@@ -2,17 +2,22 @@ from pathlib import Path
 
 import requests
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from openai import OpenAI
 
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
 
-from cluster_screenshots.tsne_params import TSNEParams
+try:
+    from cluster_screenshots.tsne_params import TSNEParams
+except ImportError:
+    from tsne_params import TSNEParams
 try:
     from lapjv import lapjv
 except ImportError:
     pass
+
+FONT = Path(__file__).with_name('SourceSans.ttf')
 
 
 def use_item(item):
@@ -37,11 +42,14 @@ def load_records(config, records, params: TSNEParams):
         else:
             req_params = dict(page_size=params.TO_PLOT*2, order_by='-created_at')
             yield dict(msg=f'Fetching from {workspace}...')
+        workspace_metadata = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}', req_params, headers={'Authorization': api_key}).json()
         items = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}/items', req_params, headers={'Authorization': api_key}).json()
         if isinstance(items, list):
             yield dict(msg=f'Got {len(items)} items.')
             yield from ensure_embeddings(items, workspace, api_key, params)
             items = [item for item in items if use_item(item)]
+            for item in items:
+                item['workspace_title'] = workspace_metadata.get('title') or workspace_metadata.get('context-label') or workspace_metadata.get('source')
             records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
@@ -50,7 +58,7 @@ def ensure_embeddings(records, workspace, api_key, params: TSNEParams):
     for i, record in enumerate(records):
         if i % 100 == 0:
             yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
-        if 'embedding' in record:
+        if 'embedding' in record and record['embedding'] and len(record['embedding']) == params.EMBEDDING_DIMENSION:
             continue
         description = record['future_scenario_description']
         completion = openai.embeddings.create(
@@ -79,13 +87,75 @@ def calc_tsne_grid(X_2d, out_dim):
     grid_jv = grid[col_asses]
     return grid_jv
 
+def white_patch(im: Image.Image,
+                white_pct: float = 90.0,   # “bright” threshold (percentile)
+                sat_thresh: float = 0.20    # drop coloured pixels
+               ) -> Image.Image:
+    """
+    White-balance a scanned page by forcing the brightest,
+    least-saturated pixels to 255 in every channel.
+    """
+    im = im.convert("RGB")
+    arr = np.asarray(im).astype(np.float32)
+
+    # 1. luminance & saturation
+    lum  = arr.mean(axis=2)                       # cheap grayscale
+    cmax = arr.max(axis=2);  cmin = arr.min(axis=2)
+    sat  = np.where(cmax > 0, (cmax - cmin) / cmax, 0)
+
+    # 2. pick candidate “paper” pixels
+    bright   = lum >= np.percentile(lum, white_pct)
+    neutral  = sat  < sat_thresh
+    mask     = bright & neutral
+
+    if not np.any(mask):                          # nothing found → fall back
+        mean   = arr.mean(axis=(0, 1))
+    else:
+        mean   = arr[mask].reshape(-1, 3).mean(axis=0)
+
+    # 3. linear scale so mean → 255
+    scale  = 255.0 / mean
+    result = np.clip(arr * scale, 0, 255).astype(np.uint8)
+
+    return Image.fromarray(result, "RGB")
+
+def gray_world(im: Image.Image) -> Image.Image:
+    """
+    Scale each RGB channel so that their means are equal
+    (the classic 'gray-world' assumption).
+    """
+    im = im.convert("RGB")                       # be explicit
+    arr = np.asarray(im).astype(np.float32)
+
+    # channel means and scale factors
+    mean = arr.mean(axis=(0, 1))
+    target = mean.mean()                         # overall average
+    scale = target / mean                        # three scale factors
+
+    # apply, clip, back to PIL
+    balanced = np.clip(arr * scale, 0, 255).astype(np.uint8)
+    return Image.fromarray(balanced, "RGB")
+
+# ---------- 2.  Contrast stretch to common black/white points ----------
+def stretch_contrast(im: Image.Image,
+                     low_pct: float = 1.0,
+                     high_pct: float = 99.0) -> Image.Image:
+    """
+    Histogram-stretch so the low_pct / high_pct percentiles map to 0/255.
+    Keeps extreme outliers from blowing the image out.
+    """
+    return ImageOps.autocontrast(
+        im, cutoff=(low_pct, 100 - high_pct), preserve_tone=True
+    )                                            # Pillow ≥8.0 supports tuple cutoff
+
 def get_image(record, target_size, pos_x, pos_y, params: TSNEParams):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     metadata = dict()
     if record is not None:
         filename = record.get('screenshot_url')
         filename = filename.replace('https://storage.googleapis.com/chronomaps3.firebasestorage.app', 'https://storage.googleapis.com/chronomaps3-eu')
-        rotate = record.get('plausibility') or 100
+        rotate = record.get('plausibility') if isinstance(record.get('plausibility'), int) else 100
+        rotate = int(rotate)
         rotate = (100 - rotate) / 100 * 32
         favorable_future = record.get('favorable_future')
         sign = 0
@@ -120,17 +190,48 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams):
         except:
             print('Error opening image:', filename)
             raise
-        ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
-        # resize the image by ratio:
-        img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
-        # crop the image to the target size out the center
-        img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
-                        img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
+        img = white_patch(img)
+        img = stretch_contrast(img, low_pct=1, high_pct=99)
+        # ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
+        # # resize the image by ratio:
+        # img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
+        # # crop the image to the target size out the center
+        # img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
+        #                 img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
+        # img = img.resize(i, Image.Resampling.LANCZOS)
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-    img = img.rotate(rotate, expand=True, fillcolor=params.BG_COLOR)
+
+        if record.get('workspace_title'):
+            img = ImageOps.expand(img, border=(0, 0, 0, 48), fill=params.BG_COLOR)  # Add a border around the image
+            draw = ImageDraw.Draw(img)
+
+            # 2 – load a TrueType/OpenType font
+            font = ImageFont.truetype(str(FONT), size=32)      # point size in pixels
+
+            # 3 – measure the text & centre it
+            bbox = draw.textbbox((0, 0), record.get('workspace_title'), font=font)     # (x0, y0, x1, y1)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+            xy   = ((inner_target_size[0]  - w)//2, inner_target_size[1] + 8)
+
+            # 4 – draw (with optional outline for legibility)
+            draw.text(xy, record.get('workspace_title'),
+                    font=font,
+                    fill='#000000',                # text colour
+            )
+                # stroke_width=1,                         # outline thickness
+                # stroke_fill="white")                    # outline colour
+
+        if params.LOCAL:
+            os.makedirs('tsne-images', exist_ok=True)
+            filename = f"{record['workspace_title']} - {record['future_scenario_tagline']}".replace('/', '-')
+            img.save(f'tsne-images/{filename}.jpg', format='JPEG', quality=85)
+
+
+    img = img.rotate(rotate, expand=True, fillcolor=params.BG_COLOR, resample=Image.Resampling.BICUBIC)
     out_img = Image.new('RGB', target_size, params.BG_COLOR)
-    assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
-    assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
+    # assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
+    # assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
     return out_img, metadata
 
@@ -241,10 +342,17 @@ def cluster_screenshots_inner(config, params: TSNEParams):
         dim = max(w, h)
         side = params.SIDE # get_side(w/dim, OUT_DIM_X)
         res = (int(side*w/dim), int(side*h/dim))
-        padding_y = int(res[1] * params.PADDING_RATIO)
-        offset = (0, lambda x, _: padding_y * (x%2))
-        pos_offset = (0, lambda x, _: params.PADDING_RATIO * (x%2))
-        padding = (0, padding_y)
+        if params.V_OFFSET:
+            padding_y = int(res[1] * params.PADDING_RATIO)
+            offset = (0, lambda x, _: padding_y * (x%2))
+            pos_offset = (0, lambda x, _: params.PADDING_RATIO * (x%2))
+            padding = (0, padding_y)
+        else:
+            padding_x = int(res[0] * params.PADDING_RATIO)
+            offset = (lambda _, y: padding_x * (y%2), 0)
+            pos_offset = (lambda _, y: params.PADDING_RATIO * (y%2), 0)
+            padding = (padding_x, 0)
+
         yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
         tsne = {}
         yield from create_tsne_image(grid, records, params.OUT_DIM, res, offset, padding, pos_offset, tsne, params)
@@ -279,8 +387,10 @@ if __name__ == '__main__':
         CHRONOMAPS_API_URL='https://chronomaps-api-qjzuw7ypfq-ez.a.run.app',
         OPENAI_KEY=os.environ.get('OPENAI_KEY'),
         LOCAL= True,
-        FILL_RATIO = 0.9
+        FILL_RATIO = 0.9,
+        V_OFFSET = False,
+        SIDE = 1600,
     )
 
     for item in cluster_screenshots_inner(configs, params):
-        print(item)
+        print(str(item)[:100])
