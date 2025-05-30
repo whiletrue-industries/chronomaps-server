@@ -54,7 +54,7 @@ def upload_image(image, tile_size, w, h, prefix, zoom, x, y, params: TSNEParams)
     del buff
     del blob
 
-def create_tiles(prefix: str, image: Image):
+def create_tiles(prefix: str, image: Image, params: TSNEParams):
     w, h = image.size
     tile_size = 256
     num_tiles = math.ceil(w / tile_size), math.ceil(h / tile_size)
@@ -226,7 +226,7 @@ def cluster_screenshots(config, tag=None):
     for msg in cluster_screenshots_inner(config, params):
         if 'action' in msg:
             if msg['action'] == 'tiles':
-                yield from create_tiles(prefix, msg['image'])
+                yield from create_tiles(prefix, msg['image'], params)
             if msg['action'] == 'clusters':
                 info = msg['info']
                 records = msg['records']
@@ -246,6 +246,6 @@ def cluster_screenshots(config, tag=None):
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')
-            else:
-                yield msg
+        else:
+            yield msg
 
