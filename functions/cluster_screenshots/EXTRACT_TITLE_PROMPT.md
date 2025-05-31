@@ -19,17 +19,36 @@ An AI already analyzed these submissions and extracted a tagline for each submis
 Below is a list of such taglines extracted from a few submissions.
 Find the overarching theme that connects these taglines, and return it as a single string - in not more than 3 words, in a few languages.
 Be as specific as possible to the content of the taglines, and avoid generic terms. The best answer will be the one that is an answer to the question "What is the overarching theme expreseed in these future screenshots?". When answering avoid using the word 'change' in your answer (unless strictly necessary) - just use the word that describes the change. 
-For example, if the answer is "changes in political superpowers", just write "political superpowers".
+For example, if the answer is "changes in political power", just write "political power".
+
+Here are a few examples for recurring themes, you can use them as is or create new ones in a similar spirit:
+- Peace Process
+- Post-War & Justice
+- Migration & Refugees
+- Political Power
+- Climate & Disaster
+- Borders & Territory
+- Mobility & Transport
+- AI
+- Religion
+- Education
+- Energy & Water
+- Environment & Agriculture
+- Community Focus
+- Space & Technology
+- Policing & Surveilance
+- Military & Service
+- Violence & Terrorism
 
 :PREVIOUS:
 
 The response should be in the following format:
 ```json
 {
-  "english": "political superpowers",
-  "dutch": "politieke supermachten",
-  "hebrew": "מעצמות פוליטיות",
-  "arabic": "قوى سياسية عظمى"
+  "english": "political power",
+  "dutch": "politieke macht",
+  "hebrew": "כח פוליטי",
+  "arabic": "قوة سياسية"
 }
 ```
 The keys should be exactly these four languages (english, dutch, hebrew, arabic) and the values should be the exact translations of the answer in the respective languages.
