@@ -56,14 +56,16 @@ def get_assistant_id(workspace, workspace_metadata):
             description="Chronomaps Item Ingress Agent",
             instructions=instructions,
             tools=TOOLS,
-            timeout=OPERATION_TIMEOUT
+            timeout=OPERATION_TIMEOUT,
+            temperature=0.2,
         ).id
     else:
         client.beta.assistants.update(
             assistant_id=_assistant_id,
             instructions=instructions,
             tools=TOOLS,
-            timeout=OPERATION_TIMEOUT
+            timeout=OPERATION_TIMEOUT,
+            temperature=0.2,
         )
     return _assistant_id
 
