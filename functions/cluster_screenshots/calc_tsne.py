@@ -353,6 +353,7 @@ def cluster_screenshots_inner(config, params: TSNEParams):
             pos_offset = (lambda _, y: params.PADDING_RATIO * (y%2), 0)
             padding = (padding_x, 0)
 
+        yield dict(msg=f'Params: {params}')
         yield dict(msg=f'Creating image: {w}x{h} {side} {res} {padding}')
         tsne = {}
         yield from create_tsne_image(grid, records, params.OUT_DIM, res, offset, padding, pos_offset, tsne, params)
