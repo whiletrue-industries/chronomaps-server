@@ -143,6 +143,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
         try:
             yield dict(kind='status', message='fetching thread', thread_id=thread_id)
             thread = client.beta.threads.retrieve(thread_id, timeout=OPERATION_TIMEOUT)
+            yield dict(kind='status', message='got thread', thread_id=thread_id)
         except Exception as e:
             yield dict(kind='error', message='Failed to fetch thread', code=error_code)
     if not thread:
@@ -150,6 +151,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
         item_json = json.dumps(item, indent=2, ensure_ascii=False)
         yield dict(kind='status', message='creating thread')
         thread = client.beta.threads.create(timeout=OPERATION_TIMEOUT)
+        yield dict(kind='status', message='creating message', thread_id=thread.id)
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role='user',
@@ -192,6 +194,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
         
     assistant_id = get_assistant_id(workspace, workspace_metadata)
     try:
+        yield dict(kind='status', message='starting run', thread_id=thread.id, assistant_id=assistant_id)
         stream = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=assistant_id,
@@ -204,9 +207,12 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
             client.beta.threads.delete(thread.id)
         return
 
+    has_events = True
     while stream:
         current_line = ''
+        assert has_events, "Stream should have events"
         for event in stream:
+            has_events = True
             yield dict(kind='event', event=event.event)
             if event.event == 'thread.run.completed':
                 yield dict(kind='status', status='completed')
