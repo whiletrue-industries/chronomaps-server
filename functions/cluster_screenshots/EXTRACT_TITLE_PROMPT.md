@@ -18,7 +18,7 @@ An AI already analyzed these submissions and extracted a tagline for each submis
 
 Below is a list of such taglines extracted from a few submissions.
 Find the overarching theme that connects these taglines, and return it as a single string - in not more than 3 words, in a few languages.
-Be as specific as possible to the content of the taglines, and avoid generic terms. The best answer will be the one that is an answer to the question "What is the overarching theme expreseed in these future screenshots?". When answering avoid using the word 'change' in your answer (unless strictly necessary) - just use the word that describes the change. 
+Be as specific as possible to the content of the taglines, and avoid generic terms. The best answer will be the one that is an answer to the question "What is the overarching theme expressed in these future screenshots?". When answering avoid using the word 'change' in your answer (unless strictly necessary) - just use the word that describes the change. 
 For example, if the answer is "changes in political power", just write "political power".
 
 Here are a few examples for recurring themes, you can use them as is or create new ones in a similar spirit:

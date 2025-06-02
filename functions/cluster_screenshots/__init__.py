@@ -83,13 +83,13 @@ def extract_cluster_title(client, taglines, previous=None):
     taglines = f'- {"\n- ".join(taglines)}'
     if previous:
         previous = f'- {"\n- ".join(previous)}'
-        previous = 'Avoid repeating these themes - be more exact and specific if possible to make sure your response is unique and clearly distinguishable from the following:\n' + previous
+        previous = 'To avoid repeating themes which were already used, NEVER repeat any item from the following list (either exactly or similarly).\nBe more exact, specific and creative to make sure your response is unique and clearly distinguishable from the following:\n' + previous
     else:
         previous = ''
     prompt = EXTRACT_TITLE_INSTRUCTIONS.replace(':TAGLINES:', taglines).replace(':PREVIOUS:', previous)
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1",
         messages=[
             {
                 "role": "user",
@@ -98,7 +98,7 @@ def extract_cluster_title(client, taglines, previous=None):
                 ],
             }
         ],
-        temperature=0.0000001,
+        temperature=0.5,
         response_format={
             "type": 'json_object'
         }

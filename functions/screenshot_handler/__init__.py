@@ -24,7 +24,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     base64_image = encode_image(image_bytes)
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1",
         messages=[
             {
                 "role": "user",

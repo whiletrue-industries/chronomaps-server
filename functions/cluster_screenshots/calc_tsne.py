@@ -394,4 +394,4 @@ if __name__ == '__main__':
     )
 
     for item in cluster_screenshots_inner(configs, params):
-        print(str(item)[:100])
+        print(str(item)[:1000])

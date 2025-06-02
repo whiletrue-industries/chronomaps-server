@@ -28,7 +28,7 @@ class TSNEParams():
         self.TO_PLOT = int(self.OUT_DIM_X * self.OUT_DIM_Y * self.FILL_RATIO)
 
     def __str__(self):
-        return f"TSNEParams(EMBEDDING_DIMENSION={self.EMBEDDING_DIMENSION}, PERPLEXITY={self.PERPLEXITY}, " +\
-               f"TSNE_ITER={self.TSNE_ITER}, ORIGINAL_IMAGE_SIZE={self.ORIGINAL_IMAGE_SIZE}, CELL_RATIOS={self.CELL_RATIOS}, " +\
+        return f"TSNEParams(TAG={self.TAG}," +\
+               f"ORIGINAL_IMAGE_SIZE={self.ORIGINAL_IMAGE_SIZE}, CELL_RATIOS={self.CELL_RATIOS}, " +\
                f"BG_COLOR={self.BG_COLOR}, OUT_DIM_X={self.OUT_DIM_X}, OUT_RATIO={self.OUT_RATIO}, PADDING_RATIO={self.PADDING_RATIO}, " +\
-               f"FILL_RATIO={self.FILL_RATIO}, SIDE={self.SIDE}, TAG={self.TAG}, LOCAL={self.LOCAL}, V_OFFSET={self.V_OFFSET})"
+               f"FILL_RATIO={self.FILL_RATIO}, SIDE={self.SIDE}, V_OFFSET={self.V_OFFSET})"
