@@ -229,6 +229,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                     time.sleep(1)
                     run = client.beta.threads.runs.retrieve(
                         run_id=event.data.id,
+                        thread_id=thread.id,
                         timeout=OPERATION_TIMEOUT
                     )
                     if run.status != 'queued':
