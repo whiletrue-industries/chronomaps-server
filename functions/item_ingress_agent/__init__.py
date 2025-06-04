@@ -218,10 +218,16 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 yield dict(kind='status', status='completed')
                 stream = None
                 break
+            elif event.event in ('thread.run.queued', 'thread.run.expired', 'thread.run.cancelled'):
+                yield dict(kind='status', status='failed', location=event.event)
+                if thread:
+                    client.beta.threads.delete(thread.id, timeout=OPERATION_TIMEOUT)
+                stream = None
+                break
             elif event.event == 'thread.run.failed':
                 yield dict(kind='status', status='failed', location='thread.run.failed', error=event.data.last_error)
                 if thread:
-                    client.beta.threads.delete(thread.id)
+                    client.beta.threads.delete(thread.id, timeout=OPERATION_TIMEOUT)
                 stream = None
                 break
             elif event.event == 'thread.run.requires_action':
