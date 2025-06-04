@@ -33,11 +33,9 @@ TOOLS = [
 ]
 OPERATION_TIMEOUT = 30
 
-client = OpenAI(api_key=OPENAI_KEY)
-
 _assistant_id = None
 
-def get_assistant_id(workspace, workspace_metadata):
+def get_assistant_id(client, workspace, workspace_metadata):
     global _assistant_id
     if _assistant_id is not None:
         return _assistant_id
@@ -126,6 +124,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     db.collection('emails').document().set(message)    
 
 def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
+    client = OpenAI(api_key=OPENAI_KEY)
     yield dict(kind='status', message='fetching item')
     item, error_code = fetch_item(workspace, item_id, api_key, item_key)
     if error_code:
@@ -192,7 +191,7 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
             yield dict(kind='status', status='completed')
             return
         
-    assistant_id = get_assistant_id(workspace, workspace_metadata)
+    assistant_id = get_assistant_id(client, workspace, workspace_metadata)
     try:
         yield dict(kind='status', message='starting run', thread_id=thread.id, assistant_id=assistant_id)
         stream = client.beta.threads.runs.create(
