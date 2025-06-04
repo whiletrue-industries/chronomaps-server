@@ -1,3 +1,4 @@
+import time
 from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
@@ -217,11 +218,27 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 yield dict(kind='status', status='completed')
                 stream = None
                 break
-            elif event.event in ('thread.run.queued', 'thread.run.expired', 'thread.run.cancelled'):
+            elif event.event in ('thread.run.expired', 'thread.run.cancelled'):
                 yield dict(kind='status', status='failed', location=event.event)
                 if thread:
                     client.beta.threads.delete(thread.id, timeout=OPERATION_TIMEOUT)
                 stream = None
+                break
+            elif event.event == 'thread.run.queued':
+                for i in range(10):
+                    time.sleep(1)
+                    run = client.beta.threads.runs.retrieve(
+                        run_id=event.data.id,
+                        timeout=OPERATION_TIMEOUT
+                    )
+                    if run.status != 'queued':
+                        yield dict(kind='status', message=f'stopped waiting at {i}: {run.status}', location=event.event)
+                        break
+                else:
+                    yield dict(kind='status', status='failed', location=event.event)
+                    if thread:
+                        client.beta.threads.delete(thread.id, timeout=OPERATION_TIMEOUT)
+                    stream = None
                 break
             elif event.event == 'thread.run.failed':
                 yield dict(kind='status', status='failed', location='thread.run.failed', error=event.data.last_error)
