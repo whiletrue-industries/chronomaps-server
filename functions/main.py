@@ -93,3 +93,4 @@ def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     tag = 'its_time'
     for bit in cluster_screenshots_fn(config, tag=tag):
         print(json.dumps(bit, ensure_ascii=False) + '\n')
+
