@@ -108,7 +108,7 @@ def get_items(workspace):
     try:
         items_metadata = (
             sanitize_metadata(
-                dict(**item.get("metadata", {}), _id=item['id']),
+                dict(**item.get("metadata", {}), _id=item['id'], **({"_key": item.get("key")} if privilege > PRIVILEGE_PRIVATE_KEY else {})),
                 exclude_private=privilege < PRIVILEGE_PRIVATE_KEY
             )
             for item in items
