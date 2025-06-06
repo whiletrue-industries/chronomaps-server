@@ -246,6 +246,16 @@ def cluster_screenshots(config, tag=None):
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')
+            if msg['action'] == 'save_image':
+                image = msg['image']
+                path = msg['path']
+                yield dict(msg=f'Saving enhanced image to {path}')
+                # blob = bucket.blob(path)
+                # buff = BytesIO()
+                # image.save(buff, format='jpeg', quality=90, optimize=True)
+                # buff.seek(0)
+                # blob.upload_from_file(buff, content_type='image/jpeg')
+                # blob.make_public()
         else:
             yield msg
 

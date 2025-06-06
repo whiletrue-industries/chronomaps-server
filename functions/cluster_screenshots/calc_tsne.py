@@ -148,9 +148,10 @@ def stretch_contrast(im: Image.Image,
         im, cutoff=(low_pct, 100 - high_pct), preserve_tone=True
     )                                            # Pillow ≥8.0 supports tuple cutoff
 
-def get_image(record, target_size, pos_x, pos_y, params: TSNEParams):
+def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     metadata = dict()
+    to_save = None
     if record is not None:
         filename = record.get('screenshot_url')
         filename = filename.replace('https://storage.googleapis.com/chronomaps3.firebasestorage.app', 'https://storage.googleapis.com/chronomaps3-eu')
@@ -185,21 +186,24 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
+        enhanced_filename = filename.replace('.jpg', '.enhanced.jpg')
+        enhanced = True
         try:
-            img = Image.open(requests.get(filename, stream=True).raw)
+            img = Image.open(requests.get(enhanced_filename, stream=True).raw)
         except:
-            print('Error opening image:', filename)
-            raise
-        img = white_patch(img)
-        img = stretch_contrast(img, low_pct=1, high_pct=99)
-        # ratio = max(inner_target_size[0] / img.width, inner_target_size[1] / img.height)
-        # # resize the image by ratio:
-        # img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.Resampling.LANCZOS)
-        # # crop the image to the target size out the center
-        # img = img.crop((img.size[0]//2 - inner_target_size[0]//2, img.size[1]//2 - inner_target_size[1]//2,
-        #                 img.size[0]//2 + inner_target_size[0]//2, img.size[1]//2 + inner_target_size[1]//2))
-        # img = img.resize(i, Image.Resampling.LANCZOS)
-        img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
+            try:
+                img = Image.open(requests.get(filename, stream=True).raw)
+                enhanced = False
+            except Exception as e:
+                print('Error opening image:', filename)
+                raise
+
+        if not enhanced:
+            img = white_patch(img)
+            img = stretch_contrast(img, low_pct=1, high_pct=99)
+            img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
+            object_path = enhanced_filename.replace('https://storage.googleapis.com/chronomaps3-eu/', '')
+            to_save = img, object_path
 
         if record.get('workspace_title'):
             img = ImageOps.expand(img, border=(0, 0, 0, 48), fill=params.BG_COLOR)  # Add a border around the image
@@ -233,7 +237,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams):
     # assert target_size[0] >= img.width, f'{target_size[0]} < {img.width}'
     # assert target_size[1] >= img.height, f'{target_size[1]} < {img.height}'
     out_img.paste(img, ((target_size[0] - img.width) // 2, (target_size[1] - img.height) // 2))
-    return out_img, metadata
+    return out_img, metadata, to_save
 
 def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offset, tsne_out, params: TSNEParams):
     # print('>>>', filename)
@@ -262,7 +266,9 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
         for pos_y in range(out_dim[1]):
             pos = (pos_y, pos_x)
             record = positions.get(pos)
-            img, metadata = get_image(record, res, pos_x, pos_y, params)
+            img, metadata, to_save = get_image(record, res, pos_x, pos_y, params)
+            if to_save is not None:
+                yield dict(action='save_image', image=to_save[0], path=to_save[1])
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:
