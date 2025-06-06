@@ -268,7 +268,7 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
             record = positions.get(pos)
             img, metadata, to_save = get_image(record, res, pos_x, pos_y, params)
             if to_save is not None:
-                yield dict(action='save_image', image=to_save[0], path=to_save[1])
+                yield dict(action='save_image', image=to_save[0], path=to_save[1], metadata=metadata)
             if callable(offset_x):
                 _offset_x = offset_x(pos_x, pos_y)
             else:

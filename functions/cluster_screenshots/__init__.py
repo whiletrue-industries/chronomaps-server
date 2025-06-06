@@ -249,13 +249,15 @@ def cluster_screenshots(config, tag=None):
             if msg['action'] == 'save_image':
                 image = msg['image']
                 path = msg['path']
+                metadata = msg['metadata']
                 yield dict(msg=f'Saving enhanced image to {path}')
-                # blob = bucket.blob(path)
-                # buff = BytesIO()
-                # image.save(buff, format='jpeg', quality=90, optimize=True)
-                # buff.seek(0)
-                # blob.upload_from_file(buff, content_type='image/jpeg')
-                # blob.make_public()
+                blob = bucket.blob(path)
+                buff = BytesIO()
+                image.save(buff, format='jpeg', quality=90, optimize=True, progressive=True)
+                buff.seek(0)
+                blob.upload_from_file(buff, content_type='image/jpeg')
+                blob.make_public()
+                metadata['url'] = blob.public_url
         else:
             yield msg
 
