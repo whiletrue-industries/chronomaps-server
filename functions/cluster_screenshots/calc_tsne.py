@@ -186,7 +186,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
-        enhanced_filename = filename.replace('.jpg', '.enhanced.jpg')
+        enhanced_filename = filename.replace('.jpeg', '.enhanced.jpeg')
         enhanced = True
         try:
             img = Image.open(requests.get(enhanced_filename, stream=True).raw)
