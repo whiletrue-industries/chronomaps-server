@@ -172,7 +172,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
             favorable_future=favorable_future,
             timestamp=record['created_at'],
             lang=record.get('detected_language'),
-            url=record.get('screenshot_url'),
+            url=filename
         )
     else:
         filename = None
@@ -190,6 +190,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         enhanced = True
         try:
             img = Image.open(requests.get(enhanced_filename, stream=True).raw)
+            metadata['url'] = enhanced_filename
         except:
             try:
                 img = Image.open(requests.get(filename, stream=True).raw)
