@@ -20,7 +20,7 @@ bucket = storage.bucket(name=BUCKET_NAME)
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode("utf-8")
 
-def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg'):
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', item_id=None, item_key=None):
     base64_image = encode_image(image_bytes)
 
     completion = client.chat.completions.create(
@@ -64,6 +64,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
             transition_bar_position=content['transition_bar_before_during_after'],
             transition_bar_certainty=content['transition_bar_certainty'],
             content=content['content'],
+            content_title=content['content_title'],
             content_certainty=content['content_certainty'],
             future_scenario_tagline=content['future_scenario_tagline'],
             future_scenario_description=content['future_scenario_description'],
@@ -86,16 +87,27 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     moderation = response.json().get('default_moderation_level')
     record[f'{PRIVATE_KEY}moderation'] = moderation or 3   # Can show, not moderated
 
-    # Create new item in Chronomaps API
-    response = requests.post(url, json=record, headers={'Authorization': api_key})
-    if response.status_code == 403:
-        return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403
-    if response.status_code == 404:
-        return dict(error=f"Workspace {workspace} not found"), 404
-    response.raise_for_status()
-    item_data = response.json()
-    item_id = item_data['item_id']
-    item_key = item_data['item_key']
+    if item_id and item_key:
+        params = {'item-key': item_key}
+        url = os.path.join(url, item_id)
+        response = requests.put(url, json=record, headers={'Authorization': api_key}, params=params)
+        if response.status_code == 403:
+            return dict(error=f"Workspace {workspace} and {item_id} not authorized for update"), 403
+        if response.status_code == 404:
+            return dict(error=f"Workspace {workspace} and {item_id} not found"), 404
+        response.raise_for_status()
+    else:
+        # Create new item in Chronomaps API
+        response = requests.post(url, json=record, headers={'Authorization': api_key})
+        if response.status_code == 403:
+            return dict(error=f"Workspace {workspace} not authorized for new items with this key"), 403
+        if response.status_code == 404:
+            return dict(error=f"Workspace {workspace} not found"), 404
+        response.raise_for_status()
+        item_data = response.json()
+        item_id = item_data['item_id']
+        item_key = item_data['item_key']
+        url = os.path.join(url, item_id)
 
     # Save the image to the firebase storage 
     suffix = image_content_type.split('/')[1]
@@ -103,14 +115,13 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     blob.upload_from_string(image_bytes, content_type=image_content_type)
     blob.make_public()
 
-    url = os.path.join(url, item_id)
     record = {'screenshot_url': blob.public_url}
     params = {'item-key': item_key}
     response = requests.put(url, json=record, headers={'Authorization': api_key}, params=params)
     print('RESPONSE:', url, record, params, response.status_code, response.text)
 
     record['item_id'] = item_id
-    record['item_key'] = item_data['item_key']
+    record['item_key'] = item_key
     record['automatic'] = automatic
     
     return record
