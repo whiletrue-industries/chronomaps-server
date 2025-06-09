@@ -1,6 +1,6 @@
 from firebase_admin import firestore
 import requests
-from functions.config import PRIVATE_KEY, CHRONOMAPS_API_URL
+from config import PRIVATE_KEY, CHRONOMAPS_API_URL
 import datetime
 
 db = firestore.client()
