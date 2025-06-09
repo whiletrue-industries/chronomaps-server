@@ -70,8 +70,8 @@ def complete_flow(workspace_id, item_id, item_key, api_key, properties):
     if properties:
         # Update item properties
         prev_item = requests.get(f'{CHRONOMAPS_API_URL}/{workspace_id}/{item_id}', headers=headers, params=params).json()
-        item = requests.put(f'{CHRONOMAPS_API_URL}/{workspace_id}/{item_id}', headers=headers, params=params, json=properties)
+        item = requests.put(f'{CHRONOMAPS_API_URL}/{workspace_id}/{item_id}', headers=headers, params=params, json=properties).json()
         if EMAIL_PROP not in prev_item and EMAIL_PROP in item:
             return send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key)
-        return {'error': 'Already sent email or no email address found', 'items': [prev_item, item], 'bools': [EMAIL_PROP not in prev_item, EMAIL_PROP in item]}, 400
+        return {'error': 'Already sent email or no email address found', 'items': [prev_item, item], 'bools': [EMAIL_PROP not in prev_item, EMAIL_PROP in item], 'p': properties}, 400
     return {'error': 'No properties provided for update'}, 400
