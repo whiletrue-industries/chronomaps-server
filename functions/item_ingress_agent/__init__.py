@@ -103,27 +103,6 @@ def update_item_properties(workspace, item_id, api_key, item_key, payload):
     item_data = response.json()
     return item_data, False
 
-def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key):
-    email_address = item.get(PRIVATE_KEY + 'email')
-    if not email_address:
-        print('No email address found in item properties')
-        return
-    email_template = workspace_metadata.get('email-template')
-    if not email_template:
-        print('No email template found in workspace metadata')
-        return
-    secret_link = f'https://mapfutur.es/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}'
-    message = dict(
-        to=[email_address],
-        template=dict(
-            name=email_template,
-            data=dict(
-                link=secret_link,
-            )
-        )
-    )
-    db.collection('emails').document().set(message)    
-
 def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
     client = OpenAI(api_key=OPENAI_KEY)
     yield dict(kind='status', message='fetching item')
@@ -312,7 +291,6 @@ def item_ingress_agent_unsafe(workspace, item_id, api_key, item_key, message):
                 current_line = current_line.split('\n')[-1]
                 if 'DONE' in current_line:
                     yield dict(kind='status', status='done')
-                    send_email(workspace, workspace_metadata, item, item_id, item_key, api_key)
                     text = text.split('DONE')[0]
                 yield dict(kind='text', value=text)
 

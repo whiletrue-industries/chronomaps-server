@@ -13,6 +13,7 @@ from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
 from cluster_screenshots import cluster_screenshots as cluster_screenshots_fn
+from complete_flow import complete_flow as complete_flow_fn
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 
@@ -42,6 +43,21 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     item_id = req.args.get('item_id')
     item_key = req.args.get('item_key')
     return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type, item_id=item_id, item_key=item_key)
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["put"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
+def complete_flow(req: https_fn.Request) -> https_fn.Response:
+    # Get the request data
+    # Workspace and api_key from query parameters:
+    workspace = req.args.get('workspace')
+    api_key = req.args.get('api_key')
+    if not workspace or not api_key:
+        return https_fn.Response("Missing workspace or api_key", status=400)
+
+    item_id = req.args.get('item_id')
+    item_key = req.args.get('item_key')
+
+    properties = req.get_json(silent=True)
+    return complete_flow_fn(workspace_id=workspace, item_id=item_id, item_key=item_key, api_key=api_key, properties=properties) 
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.MB_512)
 def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
