@@ -24,7 +24,7 @@ def get_formatted_date():
 
 def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key):
     email_address = item.get(EMAIL_PROP)
-    email_template = workspace_metadata.get('email-template')
+    email_template = workspace_metadata.get('email-template') or 'after-evaluate'
     if not email_template:
         return {'error': 'No email template found in workspace metadata'}, 400
     potential, potential_desc  = POTENTIALS.get(item.get('plausibility', 50)) or ('unknown', 'unknown potential')
