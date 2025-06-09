@@ -16,7 +16,7 @@ POTENTIALS = {
 
 def get_formatted_date():
     # Get current date
-    today = datetime.now()
+    today = datetime.datetime.now()
     # Suffixes for the day
     suffix = lambda d: 'th' if 11 <= d <= 13 else {1:'st', 2:'nd', 3:'rd'}.get(d % 10, 'th')
     # Format
