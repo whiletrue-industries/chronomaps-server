@@ -38,15 +38,15 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         event=workspace_metadata.get('event_name', 'the workshop'),
         img_url=item.get('screenshot_url'),
         ish='-ish' if 'mostly' in item.get('favorable_future', '').lower() else '',
-        edit_link=f'https://mapfutur.es/props?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}',
-        publish_link=f'https://mapfutur.es/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}#publish',
+        publish_link=f'https://mapfutur.es/props?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}#publish',
+        edit_link=f'https://mapfutur.es/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}',
         potential=potential,
         potential_desc=potential_desc,
         preference=preference,
         relative_time=relative_time,
         tagline=item.get('future_scenario_tagline', 'your imagined future'),
         template_type=item.get('screenshot_type') or 'screenshot',
-        transition=item.get('transition_bar_transition_event') or 'a future event',
+        transition=item.get('transition_bar_transition_event') or 'an unspecified future transition',
     )
 
     message = dict(
