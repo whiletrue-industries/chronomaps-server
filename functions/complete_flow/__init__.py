@@ -28,7 +28,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     if not email_template:
         return {'error': 'No email template found in workspace metadata'}, 400
     potential, potential_desc  = POTENTIALS.get(item.get('plausibility', 50)) or ('unknown', 'unknown potential')
-    preference = 'prefer' if 'prefer' in item.get('favorable_future', '').lower() else 'prevent'
+    preference = 'prefer' if 'prefer' in (item.get('favorable_future') or  '').lower() else 'prevent'
     relative_time = (item.get('transition_bar_position') or '').lower().replace('unclear', '') or 'some time around'
 
     data = dict(
