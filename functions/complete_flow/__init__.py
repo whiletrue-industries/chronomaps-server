@@ -29,7 +29,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         return {'error': 'No email template found in workspace metadata'}, 400
     potential, potential_desc  = POTENTIALS.get(item.get('plausibility', 50)) or ('unknown', 'unknown potential')
     preference = 'prefer' if 'prefer' in item.get('favorable_future', '').lower() else 'prevent'
-    relative_time = (item.get('transition_bar_before_during_after') or '').lower().replace('unclear', '') or 'some time around'
+    relative_time = (item.get('transition_bar_position') or '').lower().replace('unclear', '') or 'some time around'
 
     data = dict(
         afterword=False,
@@ -46,7 +46,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         relative_time=relative_time,
         tagline=item.get('future_scenario_tagline', 'your imagined future'),
         template_type=item.get('screenshot_type') or 'screenshot',
-        transition=item.get('transition_bar_transition_event') or 'an unspecified future transition',
+        transition=item.get('transition_bar_event') or 'an unspecified future transition',
     )
 
     message = dict(
