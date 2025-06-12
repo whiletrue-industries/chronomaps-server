@@ -37,7 +37,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         description=workspace_metadata.get('content_title', 'your imagined future'),
         event=workspace_metadata.get('event_name', 'the workshop'),
         img_url=item.get('screenshot_url'),
-        ish='-ish' if 'mostly' in item.get('favorable_future', '').lower() else '',
+        ish='-ish' if 'mostly' in (item.get('favorable_future') or '').lower() else '',
         publish_link=f'https://mapfutur.es/props?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}#publish',
         edit_link=f'https://mapfutur.es/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}',
         potential=potential,
