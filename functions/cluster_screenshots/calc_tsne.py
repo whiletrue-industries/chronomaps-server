@@ -33,6 +33,10 @@ def use_item(item):
     return False
 
 def load_records(config, records, params: TSNEParams):
+    if len(config) > 1:
+        max_per_workspace = int(params.TO_PLOT / 2)
+    else:
+        max_per_workspace = params.TO_PLOT
     for workspace, api_key, *extra in config:
         if extra:
             min_range = int(extra[0])
@@ -48,6 +52,8 @@ def load_records(config, records, params: TSNEParams):
             yield dict(msg=f'Got {len(items)} items.')
             yield from ensure_embeddings(items, workspace, api_key, params)
             items = [item for item in items if use_item(item)]
+            items = sorted(items, key=lambda x: x['created_at'], reverse=True)
+            items = items[:max_per_workspace]
             for item in items:
                 item['workspace_title'] = workspace_metadata.get('title') or workspace_metadata.get('context-label') or workspace_metadata.get('source')
             records.extend(items)
@@ -186,7 +192,8 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
-        enhanced_filename = filename.replace('.jpeg', '.enhanced.jpeg')
+        side_ext = '' if params.SIDE == 1000 else f'.{params.SIDE}'
+        enhanced_filename = filename.replace('.jpeg', f'.enhanced{side_ext}.jpeg')
         enhanced = True
         try:
             img = Image.open(requests.get(enhanced_filename, stream=True).raw)
