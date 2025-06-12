@@ -45,7 +45,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         preference=preference,
         relative_time=relative_time,
         tagline=item.get('future_scenario_tagline', 'your imagined future'),
-        template_type=item.get('screenshot_type') or 'screenshot',
+        template_type=item.get('screenshot_type').replace('_', ' ') or 'screenshot',
         transition=item.get('transition_bar_event') or 'an unspecified future transition',
     )
 
