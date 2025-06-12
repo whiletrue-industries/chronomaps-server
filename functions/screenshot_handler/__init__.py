@@ -115,13 +115,15 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     blob.upload_from_string(image_bytes, content_type=image_content_type)
     blob.make_public()
 
-    record = {'screenshot_url': blob.public_url}
+    record_ = {'screenshot_url': blob.public_url}
     params = {'item-key': item_key}
-    response = requests.put(url, json=record, headers={'Authorization': api_key}, params=params)
-    print('RESPONSE:', url, record, params, response.status_code, response.text)
+    response = requests.put(url, json=record_, headers={'Authorization': api_key}, params=params)
+    print('RESPONSE:', url, record_, params, response.status_code, response.text)
+    record['screenshot_url'] = blob.public_url
 
-    record['item_id'] = item_id
-    record['item_key'] = item_key
-    record['automatic'] = automatic
-    
-    return record
+    record_['item_id'] = item_id
+    record_['item_key'] = item_key
+    record_['automatic'] = automatic
+    record_['metadata'] = record
+
+    return record_
