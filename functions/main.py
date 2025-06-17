@@ -112,6 +112,10 @@ def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
         print("No config provided")
         return
     tag = 'jma25'
-    for bit in cluster_screenshots_fn(config, tag=tag, add_title=False, if_changed=True):
-        print(json.dumps(bit, ensure_ascii=False) + '\n')
+
+    def generate():
+        for bit in cluster_screenshots_fn(config, tag=tag, add_title=False, if_changed=True):
+            print(json.dumps(bit, ensure_ascii=False) + '\n')
+            yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
+    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
