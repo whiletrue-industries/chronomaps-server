@@ -93,23 +93,25 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     # Workspace and api_key from query parameters:
     config = req.args.get('config')
     tag = req.args.get('tag')
+    no_title = req.args.get('no_title', 'false').lower() == 'true'
+    add_title = not no_title
     start = time.time()
     
     def generate():
-        for bit in cluster_screenshots_fn(config, tag=tag):
+        for bit in cluster_screenshots_fn(config, tag=tag, add_title=add_title):
             delta = int(time.time() - start)
             bit = [delta, bit]
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
 
-@scheduler_fn.on_schedule(region='europe-west1', schedule="every 10 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every 60 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     config = CONFIG__ITS_TIME
     if not config:
         print("No config provided")
         return
-    tag = 'its_time'
-    for bit in cluster_screenshots_fn(config, tag=tag):
+    tag = 'jma25'
+    for bit in cluster_screenshots_fn(config, tag=tag, add_title=False):
         print(json.dumps(bit, ensure_ascii=False) + '\n')
 

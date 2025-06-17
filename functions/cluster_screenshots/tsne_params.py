@@ -18,6 +18,7 @@ class TSNEParams():
     TAG: str = None
     LOCAL: bool = False
     V_OFFSET: bool = False
+    ADD_TITLE: bool = True
 
     OPENAI_KEY: str = None
     CHRONOMAPS_API_URL: str = None

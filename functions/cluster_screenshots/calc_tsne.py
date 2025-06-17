@@ -213,7 +213,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
             object_path = enhanced_filename.replace('https://storage.googleapis.com/chronomaps3-eu/', '')
             to_save = img, object_path
 
-        if record.get('workspace_title'):
+        if record.get('workspace_title') and params.ADD_TITLE:
             img = ImageOps.expand(img, border=(0, 0, 0, 48), fill=params.BG_COLOR)  # Add a border around the image
             draw = ImageDraw.Draw(img)
 
