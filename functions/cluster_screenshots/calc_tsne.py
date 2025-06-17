@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import requests
@@ -333,10 +334,15 @@ def convert_all_coords(info):
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
         grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
-def cluster_screenshots_inner(config, params: TSNEParams):
+def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
     records = []
     yield from load_records(config, records, params)
     records = records[:params.TO_PLOT]
+    new_state_hash = ''.join([rec['_id'] for rec in records])
+    new_state_hash = hashlib.md5(new_state_hash.encode('utf-8')).hexdigest()
+    if last_state_hash and last_state_hash !=  new_state_hash:
+        yield dict(msg=f'No new records - same hash ({last_state_hash})')
+        return
 
     records, activations = records, [rec['embedding'] for rec in records]
 
@@ -382,6 +388,7 @@ def cluster_screenshots_inner(config, params: TSNEParams):
             image.save('tsne.png', format='PNG', compress_level=9)
 
         yield dict(msg='Processing complete.')
+        info['state_hash'] = new_state_hash
         yield dict(action='clusters', info=info, records=records, grid=grid)
 
     except Exception as e:

@@ -193,7 +193,7 @@ def convert_all_coords(info):
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
         grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
-def cluster_screenshots(config, tag=None, add_title=True):
+def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
     config = config.split(';') if config else []
     config = [c.strip().split(':') for c in config if c.strip()]
     params = TSNEParams(
@@ -215,6 +215,7 @@ def cluster_screenshots(config, tag=None, add_title=True):
         try:
             tag_info = json.loads(content)
             set_id = tag_info['set_id']
+            state_hash = tag_info.get('state_hash') if if_changed else None
             set_id += 1
             if set_id == 16:
                 set_id = 0
@@ -224,7 +225,7 @@ def cluster_screenshots(config, tag=None, add_title=True):
 
     prefix = f'{tag}/{set_id}'
 
-    for msg in cluster_screenshots_inner(config, params):
+    for msg in cluster_screenshots_inner(config, params, state_hash):
         if 'action' in msg:
             if msg['action'] == 'tiles':
                 yield from create_tiles(prefix, msg['image'], params)
@@ -243,7 +244,7 @@ def cluster_screenshots(config, tag=None, add_title=True):
                 blob.make_public()
 
                 global_config_blob.cache_control = 'no-cache'
-                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id)), content_type='application/json')
+                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id, state_hash=info['state_hash'])), content_type='application/json')
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')
