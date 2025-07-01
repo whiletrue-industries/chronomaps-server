@@ -22,7 +22,7 @@ def get_formatted_date():
     # Format
     return today.strftime(f"%B {today.day}{suffix(today.day)}, %Y")
 
-def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key, locale=None):
+def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key, locale=None, workshop_flow=False):
     email_address = item.get(EMAIL_PROP)
     email_template = workspace_metadata.get('email-template') or 'after-evaluate'
     if not email_template:
@@ -37,6 +37,8 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     preference = 'prefer' if 'prefer' in (item.get('favorable_future') or  '').lower() else 'prevent'
     relative_time = (item.get('transition_bar_position') or '').lower().replace('unclear', '') or 'some time around'
 
+    workshop_param = '&ws=true' if workshop_flow else ''
+
     data = dict(
         afterword=False,
         date=get_formatted_date(),
@@ -44,8 +46,8 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
         event=workspace_metadata.get('event_name', 'the workshop'),
         img_url=item.get('screenshot_url'),
         ish='-ish' if 'mostly' in (item.get('favorable_future') or '').lower() else '',
-        publish_link=f'https://mapfutur.es{locale_path}/props?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}#publish',
-        edit_link=f'https://mapfutur.es{locale_path}/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}',
+        publish_link=f'https://mapfutur.es{locale_path}/props?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}{workshop_param}#publish',
+        edit_link=f'https://mapfutur.es{locale_path}/discuss?workspace={workspace_id}&api_key={api_key}&item-id={item_id}&key={item_key}{workshop_param}',
         potential=potential,
         potential_desc=potential_desc,
         preference=preference,
@@ -65,7 +67,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     db.collection('emails').document().set(message)
     return {'success': True}, 200
 
-def complete_flow(workspace_id, item_id, item_key, api_key, properties, locale=None):
+def complete_flow(workspace_id, item_id, item_key, api_key, properties, locale=None, workshop_flow=False):
     headers = {
         'Authorization': api_key
     }
@@ -78,6 +80,6 @@ def complete_flow(workspace_id, item_id, item_key, api_key, properties, locale=N
         prev_item = requests.get(f'{CHRONOMAPS_API_URL}/{workspace_id}/{item_id}', headers=headers, params=params).json()
         item = requests.put(f'{CHRONOMAPS_API_URL}/{workspace_id}/{item_id}', headers=headers, params=params, json=properties).json()
         if EMAIL_PROP not in prev_item and EMAIL_PROP in item:
-            return send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key, locale)
-        return {'error': 'Already sent email or no email address found', 'items': [prev_item, item], 'bools': [EMAIL_PROP not in prev_item, EMAIL_PROP in item], 'p': properties}, 400
+            return send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_key, locale, workshop_flow)
+        return {'success': True, 'warning': 'Already sent email or no email address found', 'items': [prev_item, item], 'bools': [EMAIL_PROP not in prev_item, EMAIL_PROP in item], 'p': properties}
     return {'error': 'No properties provided for update'}, 400

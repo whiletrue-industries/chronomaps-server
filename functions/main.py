@@ -57,9 +57,10 @@ def complete_flow(req: https_fn.Request) -> https_fn.Response:
     item_key = req.args.get('item_key')
 
     locale = req.args.get('locale')
+    workshop_flow = req.args.get('workshop') == 'true'
 
     properties = req.get_json(silent=True)
-    return complete_flow_fn(workspace_id=workspace, item_id=item_id, item_key=item_key, api_key=api_key, properties=properties, locale=locale) 
+    return complete_flow_fn(workspace_id=workspace, item_id=item_id, item_key=item_key, api_key=api_key, properties=properties, locale=locale, workshop_flow=workshop_flow)
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.MB_512)
 def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
