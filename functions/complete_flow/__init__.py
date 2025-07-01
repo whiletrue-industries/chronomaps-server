@@ -37,7 +37,7 @@ def send_email(workspace_id, workspace_metadata, item, item_id, item_key, api_ke
     preference = 'prefer' if 'prefer' in (item.get('favorable_future') or  '').lower() else 'prevent'
     relative_time = (item.get('transition_bar_position') or '').lower().replace('unclear', '') or 'some time around'
 
-    workshop_param = '&ws=true' if workshop_flow else ''
+    workshop_param = '&wsf=true' if workshop_flow else ''
 
     data = dict(
         afterword=False,
