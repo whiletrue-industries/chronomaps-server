@@ -245,7 +245,7 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
                 blob.make_public()
 
                 global_config_blob.cache_control = 'no-cache'
-                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id, state_hash=info['state_hash'])), content_type='application/json')
+                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id, state_hash=info['state_hash'], update_time=info['update_time'])), content_type='application/json')
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')

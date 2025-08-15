@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+import datetime
 
 import requests
 import numpy as np
@@ -338,7 +339,7 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
     records = []
     yield from load_records(config, records, params)
     records = records[:params.TO_PLOT]
-    yield dict(msg=f'GOT {len(records)} - top record created at {records[0]["created_at"] if records else "N/A"}')
+    yield dict(msg=f'GOT {len(records)} - top record {records[0]["_id"]} created at {records[0]["created_at"] if records else "N/A"}')
     new_state_hash = ''.join([rec['_id'] for rec in records])
     new_state_hash = hashlib.md5(new_state_hash.encode('utf-8')).hexdigest()
     if last_state_hash and last_state_hash != new_state_hash:
@@ -390,6 +391,7 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
 
         yield dict(msg='Processing complete.')
         info['state_hash'] = new_state_hash
+        info['update_time'] = datetime.datetime.now().isoformat()
         yield dict(action='clusters', info=info, records=records, grid=grid)
 
     except Exception as e:
