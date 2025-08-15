@@ -194,6 +194,7 @@ def convert_all_coords(info):
         grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
 def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
+    yield dict(msg=f'Config: {config}, tag: {tag}, add_title: {add_title}, if_changed: {if_changed}')
     config = config.split(';') if config else []
     config = [c.strip().split(':') for c in config if c.strip()]
     params = TSNEParams(
@@ -201,7 +202,6 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
         CHRONOMAPS_API_URL=CHRONOMAPS_API_URL,
         ADD_TITLE=add_title,
     )
-    yield dict(msg=f'Config: {config}, tag: {tag}, add_title: {add_title}, if_changed: {if_changed}')
 
     if tag is None:
         if len(config) > 0:
