@@ -122,5 +122,6 @@ def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
         for bit in cluster_screenshots_fn(config, tag=tag, add_title=False, if_changed=True):
             print(json.dumps(bit, ensure_ascii=False) + '\n')
             yield f"{json.dumps(bit, ensure_ascii=False)}\n\n"
-    return https_fn.Response(generate(), status=200, mimetype='plain/text')
+    response = '\n'.join(generate())
+    return https_fn.Response(response, status=200, mimetype='plain/text')
 
