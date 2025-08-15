@@ -110,6 +110,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every 15 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
+    print("STARTING cluster_its_time")
     config = CONFIG__ITS_TIME
     if not config:
         print("No config provided")
