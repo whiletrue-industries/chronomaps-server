@@ -201,6 +201,7 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
         CHRONOMAPS_API_URL=CHRONOMAPS_API_URL,
         ADD_TITLE=add_title,
     )
+    yield dict(msg=f'Config: {config}, tag: {tag}, add_title: {add_title}, if_changed: {if_changed}')
 
     if tag is None:
         if len(config) > 0:
