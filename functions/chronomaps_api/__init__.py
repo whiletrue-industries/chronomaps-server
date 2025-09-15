@@ -47,6 +47,7 @@ def sanitize_metadata(metadata, exclude_private=True):
 # Endpoints
 @app.post("/")
 def create_workspace(user: FireBaseUser):
+    print("Creating workspace for user:", user.get("email"))
     metadata = flask.request.json
     workspace_id = str(uuid.uuid4())
     keys = generate_keys()
@@ -61,6 +62,7 @@ def create_workspace(user: FireBaseUser):
 @app.get("/")
 def list_workspaces(user: FireBaseUser):
     configs = []
+    print("Listing workspaces for user:", user.get("email"))
     for collection in db.collections():
         ref = collection.document('.config')
         if ref.get().exists:
