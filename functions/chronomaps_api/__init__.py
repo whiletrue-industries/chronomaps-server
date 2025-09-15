@@ -45,20 +45,6 @@ def sanitize_metadata(metadata, exclude_private=True):
     return metadata
 
 # Endpoints
-@app.post("/")
-def create_workspace(user: FireBaseUser):
-    print("Creating workspace for user:", user.get("email"))
-    metadata = flask.request.json
-    workspace_id = str(uuid.uuid4())
-    keys = generate_keys()
-    config = {
-        "metadata": metadata,
-        "keys": keys,
-        "config": {"collaborate": False, "public": False}
-    }
-    db.collection(workspace_id).document(".config").set(config)
-    return {"workspace_id": workspace_id, "config": config}, 201
-
 @app.get("/")
 def list_workspaces(user: FireBaseUser):
     configs = []
@@ -72,6 +58,20 @@ def list_workspaces(user: FireBaseUser):
                 **config
             ))
     return {"workspaces": configs}, 200
+
+@app.post("/")
+def create_workspace(user: FireBaseUser):
+    print("Creating workspace for user:", user.get("email"))
+    metadata = flask.request.json
+    workspace_id = str(uuid.uuid4())
+    keys = generate_keys()
+    config = {
+        "metadata": metadata,
+        "keys": keys,
+        "config": {"collaborate": False, "public": False}
+    }
+    db.collection(workspace_id).document(".config").set(config)
+    return {"workspace_id": workspace_id, "config": config}, 201
 
 @app.post("/<workspace>")
 def create_item(workspace):
