@@ -4,6 +4,7 @@ import flask
 import uuid
 from itertools import islice
 from config import PRIVATE_KEY
+from .resolve_firebase_user import FireBaseUser
 
 db = firestore.client()
 app = flask.Flask(__name__)
@@ -45,7 +46,7 @@ def sanitize_metadata(metadata, exclude_private=True):
 
 # Endpoints
 @app.post("/")
-def create_workspace():
+def create_workspace(user: FireBaseUser):
     metadata = flask.request.json
     workspace_id = str(uuid.uuid4())
     keys = generate_keys()
@@ -56,6 +57,19 @@ def create_workspace():
     }
     db.collection(workspace_id).document(".config").set(config)
     return {"workspace_id": workspace_id, "config": config}, 201
+
+@app.get("/")
+def list_workspaces(user: FireBaseUser):
+    configs = []
+    for collection in db.collections():
+        ref = collection.document('.config')
+        if ref.get().exists:
+            config = ref.get().to_dict()
+            configs.append(dict(
+                id=collection.id,
+                **config
+            ))
+    return {"workspaces": configs}, 200
 
 @app.post("/<workspace>")
 def create_item(workspace):

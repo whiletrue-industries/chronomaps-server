@@ -11,7 +11,8 @@ endpoints:
     platform: gcfv2
     region:
     - europe-west4
-    secretEnvironmentVariables: []
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
     serviceAccountEmail: null
     timeoutSeconds: null
   cluster_its_time:
