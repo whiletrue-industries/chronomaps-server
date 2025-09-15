@@ -1,14 +1,9 @@
-import json
-from config import SERVICE_ACCOUNT_JSON
 from typing import Optional
 from functools import wraps
 from flask import request, abort, g
 from firebase_admin.auth import verify_id_token
-from firebase_admin import initialize_app
-from firebase_admin.credentials import Certificate
 from firebase_admin import firestore
 
-firebase_app = initialize_app(credential=Certificate(json.loads(SERVICE_ACCOUNT_JSON))) if SERVICE_ACCOUNT_JSON else None
 db = firestore.client()
 
 def get_admins() -> list[str]:

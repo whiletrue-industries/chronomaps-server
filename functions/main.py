@@ -1,13 +1,20 @@
 from firebase_admin import initialize_app, firestore, credentials
+from firebase_admin import initialize_app
+from firebase_admin.credentials import Certificate
 from firebase_functions.params import SecretParam
 from firebase_functions import https_fn, options, scheduler_fn
-from config import CONFIG__ITS_TIME
+from config import CONFIG__ITS_TIME, SERVICE_ACCOUNT_JSON
 import json
 import time 
 
 # serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
 # cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
-initialize_app()
+if SERVICE_ACCOUNT_JSON:
+    cert = Certificate(json.loads(SERVICE_ACCOUNT_JSON))
+    initialize_app(credential=cert)
+else:
+    print('No service account provided, using default credentials')
+    initialize_app()
 
 from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn
