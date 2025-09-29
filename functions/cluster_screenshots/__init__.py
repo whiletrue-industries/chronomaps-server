@@ -211,6 +211,7 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
 
     global_config_blob = bucket.blob(f'tiles/{tag}/config.json')
     set_id = 0
+    state_hash = None
     if global_config_blob.exists():
         content = global_config_blob.download_as_text()
         try:

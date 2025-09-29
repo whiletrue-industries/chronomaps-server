@@ -35,8 +35,8 @@ def get_firebase_user_from_token() -> dict:
         return user
     # lots of possible exceptions, see firebase_admin.auth,
     # but most of the time it is a credentials issue
-    except Exception:
-        abort(401, description="Not logged in or Invalid credentials")
+    except Exception as e:
+        abort(401, description="Not logged in or Invalid credentials: " + str(e))
 
 def require_firebase_auth(f):
     """Decorator that requires Firebase authentication for Flask routes"""
