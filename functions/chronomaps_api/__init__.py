@@ -41,7 +41,7 @@ def authenticate(workspace, key, required_roles):
 
 def sanitize_metadata(metadata, exclude_private=True):
     if exclude_private:
-        return {k: v for k, v in metadata.items() if not k.startswith(PRIVATE_KEY)}
+        return {k: v for k, v in metadata.items() if not k.startswith(PRIVATE_KEY) or k == 'embedding'}
     return metadata
 
 # Endpoints
