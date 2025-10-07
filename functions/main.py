@@ -124,7 +124,7 @@ def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
         config_tags_tuples.append((config, 'jma25'))
 
     def generate():
-        print(f"Clustering screenshots with config: {config}, tag: {tag}")
+        print(f"Clustering screenshots with config: {config_tags_tuples}")
         for bit in cluster_screenshots_fn(config_tags_tuples, add_title=False, if_changed=True):
             print(json.dumps(bit, ensure_ascii=False) + '\n')
             yield f"{json.dumps(bit, ensure_ascii=False)}\n\n"
