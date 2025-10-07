@@ -339,6 +339,9 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
     records = []
     yield from load_records(config, records, params)
     records = records[:params.TO_PLOT]
+    if len(records) == 0:
+        yield dict(msg='No records found.')
+        return
     yield dict(msg=f'GOT {len(records)} - top record {records[0]["_id"]} created at {records[0]["created_at"] if records else "N/A"}')
     new_state_hash = '|'.join([rec['_id'] for rec in records])
     new_state_hash = hashlib.md5(new_state_hash.encode('utf-8')).hexdigest()
@@ -348,15 +351,12 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
 
     records, activations = records, [rec['embedding'] for rec in records]
 
-    if len(records) > 0:
-        yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-        X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
-        yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
-        grid = calc_tsne_grid(X_2d, params.OUT_DIM)
-        grid = grid[:len(records)]
-        yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
-    else:
-        grid = []
+    yield dict(msg=f'Generating 2D representation from {len(records)} records.')
+    X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
+    yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
+    grid = calc_tsne_grid(X_2d, params.OUT_DIM)
+    grid = grid[:len(records)]
+    yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
 
     try:
         # w, h = 530, 1000
