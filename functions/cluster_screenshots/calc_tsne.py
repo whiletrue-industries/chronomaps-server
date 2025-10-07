@@ -68,6 +68,8 @@ def ensure_embeddings(records, workspace, api_key, params: TSNEParams):
             yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
         if 'embedding' in record and record['embedding'] and len(record['embedding']) == params.EMBEDDING_DIMENSION:
             continue
+        if 'future_scenario_description' not in record or not record['future_scenario_description']:
+            continue
         description = record['future_scenario_description']
         completion = openai.embeddings.create(
             model="text-embedding-3-large",
