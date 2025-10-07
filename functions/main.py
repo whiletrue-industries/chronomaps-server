@@ -19,7 +19,7 @@ else:
 from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
-from cluster_screenshots import cluster_screenshots as cluster_screenshots_fn
+from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_fn
 from complete_flow import complete_flow as complete_flow_fn
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
@@ -117,16 +117,15 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every 15 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
-    print("STARTING cluster_its_time")
+    config_tags_tuples = []
+    print("STARTING clustering all workspaces")
     config = CONFIG__ITS_TIME
-    if not config:
-        print("No config provided")
-        return
-    tag = 'jma25'
+    if config:
+        config_tags_tuples.append((config, 'jma25'))
 
     def generate():
         print(f"Clustering screenshots with config: {config}, tag: {tag}")
-        for bit in cluster_screenshots_fn(config, tag=tag, add_title=False, if_changed=True):
+        for bit in cluster_screenshots_fn(config_tags_tuples, add_title=False, if_changed=True):
             print(json.dumps(bit, ensure_ascii=False) + '\n')
             yield f"{json.dumps(bit, ensure_ascii=False)}\n\n"
     response = '\n'.join(generate())

@@ -350,7 +350,7 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
 
     if len(records) > 0:
         yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-        X_2d = generate_tsne(activations, perplexity=params.PERPLEXITY, tsne_iter=params.TSNE_ITER)
+        X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)), tsne_iter=params.TSNE_ITER)
         yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
         grid = calc_tsne_grid(X_2d, params.OUT_DIM)
         grid = grid[:len(records)]

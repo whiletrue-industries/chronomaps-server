@@ -24,10 +24,12 @@ except ImportError:
 from sklearn.cluster import AgglomerativeClustering
 
 from firebase_admin import storage
+from firebase_admin import firestore
 
 from config import OPENAI_KEY, CHRONOMAPS_API_URL, BUCKET_NAME
 
 bucket = storage.bucket(name=BUCKET_NAME)
+db = firestore.client()
 
 EXTRACT_TITLE_INSTRUCTIONS = Path(__file__).with_name('EXTRACT_TITLE_PROMPT.md').read_text().strip()
 
@@ -265,3 +267,14 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
         else:
             yield msg
 
+def cluster_screenshots_all(config_tag_tuples, add_title=False, if_changed=True):
+    for collection in db.collections():
+        ref = collection.document('.config')
+        if ref.get().exists:
+            config = ref.get().to_dict()
+            config_tag_tuples.append((
+                f'{collection.id}:{config["keys"]["admin"]}:3',
+                collection.id
+            ))
+    for config, tag in config_tag_tuples:
+        yield from cluster_screenshots(config, tag=tag, add_title=add_title, if_changed=if_changed)
