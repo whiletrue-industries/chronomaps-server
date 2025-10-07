@@ -112,7 +112,8 @@ def extract_cluster_title(client, taglines, previous=None):
 
 def find_clusters(records, tsne, info):
     client = OpenAI(api_key=OPENAI_KEY)
-    clustering = AgglomerativeClustering(n_clusters=10, metric='euclidean', distance_threshold=None, linkage='ward')
+    n_clusters = min(10, len(records) // 3)
+    clustering = AgglomerativeClustering(n_clusters=n_clusters, metric='euclidean', distance_threshold=None, linkage='ward')
     clustering.fit(tsne)
     labels = clustering.labels_
     all_labels = set(labels)
