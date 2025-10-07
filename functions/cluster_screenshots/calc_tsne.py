@@ -341,8 +341,8 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
     records = []
     yield from load_records(config, records, params)
     records = records[:params.TO_PLOT]
-    if len(records) == 0:
-        yield dict(msg='No records found.')
+    if len(records) < 10:
+        yield dict(msg='Not enough records found.')
         return
     yield dict(msg=f'GOT {len(records)} - top record {records[0]["_id"]} created at {records[0]["created_at"] if records else "N/A"}')
     new_state_hash = '|'.join([rec['_id'] for rec in records])
