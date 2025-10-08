@@ -2,6 +2,7 @@ import json
 from firebase_admin import firestore
 import flask
 import uuid
+import hashlib
 from itertools import islice
 from config import PRIVATE_KEY
 from .resolve_firebase_user import require_firebase_auth
@@ -39,9 +40,15 @@ def authenticate(workspace, key, required_roles):
             return PRIVILEGE_PUBLIC
     flask.abort(403, "Unauthorized")
 
+SALT = PRIVATE_KEY[:16].encode()
+def calculate_author_id(email):
+    return hashlib.sha256(email.encode() + SALT).hexdigest()
+
 def sanitize_metadata(metadata, exclude_private=True):
     if exclude_private:
-        return {k: v for k, v in metadata.items() if not (k.startswith(PRIVATE_KEY) or k == 'embedding')}
+        ret = {k: v for k, v in metadata.items() if not (k.startswith(PRIVATE_KEY) or k == 'embedding')}
+    if 'author_id' not in metadata and '_private_email' in metadata:
+        ret['author_id'] = calculate_author_id(metadata['_private_email'])
     return metadata
 
 # Endpoints
