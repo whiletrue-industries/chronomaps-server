@@ -131,6 +131,7 @@ def get_items(workspace):
             items = items.where(key, op, value)
     items = items.stream()
     items = (dict(**doc.to_dict(), id=doc.id) for doc in items)
+    paginated_items = []
     try:
         items_metadata = (
             sanitize_metadata(
