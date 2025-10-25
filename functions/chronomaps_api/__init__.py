@@ -69,9 +69,9 @@ def list_workspaces():
     return {"workspaces": configs}, 200
 
 @app.post("/")
-# @require_firebase_auth
+@require_firebase_auth
 def create_workspace():
-    # print("Creating workspace for user:", flask.g.firebase_user.get("email"))
+    print("Creating workspace for user:", flask.g.firebase_user.get("email"))
     metadata = flask.request.json
     workspace_id = str(uuid.uuid4())
     keys = generate_keys()
