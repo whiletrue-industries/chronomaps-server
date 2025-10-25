@@ -97,10 +97,13 @@ def create_item(workspace):
 @app.get("/<workspace>")
 def get_workspace(workspace):
     key = flask.request.headers.get("Authorization")
-    authenticate(workspace, key, ["admin", "collaborate", "view"])
+    admin = authenticate(workspace, key, ["admin", "collaborate", "view"]) >= PRIVILEGE_ADMIN
     config_ref = db.collection(workspace).document(".config")
     config = config_ref.get().to_dict()
-    return config["metadata"], 200
+    ret = config["metadata"]
+    if admin:
+        ret.update(config["config"])
+    return ret, 200
 
 @app.get("/<workspace>/items")
 def get_items(workspace):
