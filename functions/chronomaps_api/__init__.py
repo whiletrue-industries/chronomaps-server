@@ -219,7 +219,7 @@ def update_workspace(workspace):
     if collaborate is not None:
         updates["config.collaborate"] = collaborate
     db.collection(workspace).document(".config").update(updates)
-    return {"message": "Workspace updated"}, 200
+    return {"message": "Workspace updated", "updates": updates}, 200
 
 @app.delete("/<workspace>")
 def delete_workspace(workspace):
