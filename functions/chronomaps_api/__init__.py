@@ -4,6 +4,7 @@ import flask
 import uuid
 import hashlib
 from itertools import islice
+
 from config import PRIVATE_KEY
 from .resolve_firebase_user import require_firebase_auth
 
@@ -205,11 +206,13 @@ def delete_item(workspace, item_id):
 
 @app.put("/<workspace>")
 def update_workspace(workspace):
+    def is_it_true(value):
+        return value.lower() == 'true'
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin"])
     metadata = flask.request.json
-    public = flask.request.args.get("public", type=bool)
-    collaborate = flask.request.args.get("collaborate", type=bool)
+    public = flask.request.args.get("public", type=is_it_true)
+    collaborate = flask.request.args.get("collaborate", type=is_it_true)
     updates = {"metadata": metadata}
     if public is not None:
         updates["config.public"] = public
