@@ -22,6 +22,22 @@ def encode_image(image_bytes):
 
 def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', item_id=None, item_key=None):
     base64_image = encode_image(image_bytes)
+    prompt = INSTRUCTIONS if not automatic else AUTOMATIC_INSTRUCTIONS
+
+    url = os.path.join(CHRONOMAPS_API_URL, workspace)
+    item_metadata = {}
+    if item_id and item_key:
+        params = {'item-key': item_key}
+        item_url = os.path.join(url, item_id)
+        response = requests.get(item_url, json=record, headers={'Authorization': api_key}, params=params)
+        if response.status_code == 403:
+            return dict(error=f"Workspace {workspace} and {item_id} not authorized for update"), 403
+        if response.status_code == 404:
+            return dict(error=f"Workspace {workspace} and {item_id} not found"), 404
+        response.raise_for_status()
+        item_metadata = response.json()
+        if automatic:
+            prompt = AUTOMATIC_INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(item_metadata.get('metadata', {}), indent=2)
 
     completion = client.chat.completions.create(
         model="gpt-4.1",
@@ -29,7 +45,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
             {
                 "role": "user",
                 "content": [
-                    { "type": "text", "text": INSTRUCTIONS if not automatic else AUTOMATIC_INSTRUCTIONS },
+                    { "type": "text", "text": prompt },
                     {
                         "type": "image_url",
                         "image_url": {
@@ -77,7 +93,6 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
         )
 
     # Read workspace config
-    url = os.path.join(CHRONOMAPS_API_URL, workspace)
     response = requests.get(url, headers={'Authorization': api_key})
     if response.status_code == 403:
         return dict(error=f"Workspace {workspace} not authorized for access with this key"), 403
@@ -89,8 +104,8 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
 
     if item_id and item_key:
         params = {'item-key': item_key}
-        url = os.path.join(url, item_id)
-        response = requests.put(url, json=record, headers={'Authorization': api_key}, params=params)
+        item_url = os.path.join(url, item_id)
+        response = requests.put(item_url, json=record, headers={'Authorization': api_key}, params=params)
         if response.status_code == 403:
             return dict(error=f"Workspace {workspace} and {item_id} not authorized for update"), 403
         if response.status_code == 404:
@@ -107,7 +122,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
         item_data = response.json()
         item_id = item_data['item_id']
         item_key = item_data['item_key']
-        url = os.path.join(url, item_id)
+        item_url = os.path.join(url, item_id)
 
     # Save the image to the firebase storage 
     suffix = image_content_type.split('/')[1]
