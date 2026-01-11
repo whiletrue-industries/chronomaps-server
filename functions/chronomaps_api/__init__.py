@@ -138,6 +138,75 @@ def sort_items_in_memory(items, order_by_str):
     # Sort with None values at the end
     return sorted(items, key=lambda x: (get_nested_value(x, order_key) is None, get_nested_value(x, order_key) or ''), reverse=reverse)
 
+def fetch_and_filter_items(workspace, filters=None, order_by=None):
+    """
+    Fetch items from workspace and apply filters/sorting.
+
+    Returns tuple of (items, use_fallback, index_url).
+    Tries Firestore queries first, falls back to in-memory if indexes are missing.
+    """
+    use_fallback = False
+    index_url = None
+
+    try:
+        # Try using Firestore indexes first
+        direction = firestore.Query.ASCENDING
+        items_query = db.collection(workspace)
+        order_by_field = order_by
+        if order_by_field is None:
+            order_by_field = "-created_at"
+        if order_by_field:
+            if order_by_field.startswith("-"):
+                order_by_field = order_by_field[1:]
+                direction = firestore.Query.DESCENDING
+            order_by_field = 'metadata.' + order_by_field
+            items_query = items_query.order_by(order_by_field, direction=direction)
+        if filters:
+            filters_list = filters.split("|")
+            for filter_expr in filters_list:
+                filter_key, op, value = filter_expr.split(None, 2)
+                try:
+                    value = json.loads(value)
+                except:
+                    pass
+                items_query = items_query.where(filter_key, op, value)
+        items = items_query.stream()
+        items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
+        items = [item for item in items if item['id'][0] != "."]
+
+    except Exception as e:
+        msg = str(e)
+        if 'The query requires an index' in msg:
+            # Fallback to in-memory filtering and sorting
+            print(f"Index missing, falling back to in-memory processing: {msg}")
+            use_fallback = True
+
+            # Extract index URL for later creation
+            if 'https://' in msg:
+                index_url = 'https://' + msg.split('https://')[1].split(' ')[0]
+
+            # Fetch all items without filtering/ordering
+            items = db.collection(workspace).stream()
+            items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
+            items = [item for item in items if item['id'][0] != "."]
+
+            # Apply filters in memory
+            items = apply_filters_in_memory(items, filters)
+
+            # Sort in memory
+            items = sort_items_in_memory(items, order_by)
+
+            # Trigger index creation asynchronously
+            threading.Thread(
+                target=create_firestore_index,
+                args=(workspace, order_by, filters),
+                daemon=True
+            ).start()
+        else:
+            raise
+
+    return items, use_fallback, index_url
+
 def create_firestore_index(workspace, order_by_field, filters_str):
     """
     Create a Firestore index using the Admin API.
@@ -276,64 +345,8 @@ def get_items(workspace):
     order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
 
-    # Try using Firestore indexes first
-    use_fallback = False
-    index_url = None
-    try:
-        direction = firestore.Query.ASCENDING
-        items_query = db.collection(workspace)
-        order_by_field = order_by
-        if order_by_field is None:
-            order_by_field = "-created_at"
-        if order_by_field:
-            if order_by_field.startswith("-"):
-                order_by_field = order_by_field[1:]
-                direction = firestore.Query.DESCENDING
-            order_by_field = 'metadata.' + order_by_field
-            items_query = items_query.order_by(order_by_field, direction=direction)
-        if filters:
-            filters_list = filters.split("|")
-            for filter_expr in filters_list:
-                filter_key, op, value = filter_expr.split(None, 2)
-                try:
-                    value = json.loads(value)
-                except:
-                    pass
-                items_query = items_query.where(filter_key, op, value)
-        items = items_query.stream()
-        items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
-        items = [item for item in items if item['id'][0] != "."]
-
-    except Exception as e:
-        msg = str(e)
-        if 'The query requires an index' in msg:
-            # Fallback to in-memory filtering and sorting
-            print(f"Index missing, falling back to in-memory processing: {msg}")
-            use_fallback = True
-
-            # Extract index URL for later creation
-            if 'https://' in msg:
-                index_url = 'https://' + msg.split('https://')[1].split(' ')[0]
-
-            # Fetch all items without filtering/ordering
-            items = db.collection(workspace).stream()
-            items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
-            items = [item for item in items if item['id'][0] != "."]
-
-            # Apply filters in memory
-            items = apply_filters_in_memory(items, filters)
-
-            # Sort in memory
-            items = sort_items_in_memory(items, order_by)
-
-            # Trigger index creation asynchronously
-            threading.Thread(
-                target=create_firestore_index,
-                args=(workspace, order_by, filters),
-                daemon=True
-            ).start()
-        else:
-            raise
+    # Fetch and filter items
+    items, use_fallback, index_url = fetch_and_filter_items(workspace, filters, order_by)
 
     # Sanitize metadata
     items_metadata = [
@@ -362,22 +375,22 @@ def aggregate_items(workspace):
 
     Query parameters:
     - field: The field name in metadata to aggregate by (required)
+    - filters: Optional pipe-separated filters to apply before aggregation
 
     Returns:
-    - A dictionary with field values as keys and counts as values
+    - A list of objects with 'value' and 'count' fields, sorted by count (descending)
     - Includes null for items without the field
     """
     auth_key = flask.request.headers.get("Authorization")
-    privilege = authenticate(workspace, auth_key, ["admin", "collaborate", "view"])
+    authenticate(workspace, auth_key, ["admin", "collaborate", "view"])
     field = flask.request.args.get("field")
+    filters = flask.request.args.get("filters", type=str)
 
     if not field:
         flask.abort(400, "Missing required parameter: field")
 
-    # Fetch all items from the workspace
-    items = db.collection(workspace).stream()
-    items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
-    items = [item for item in items if item['id'][0] != "."]
+    # Fetch and filter items (no ordering needed for aggregation)
+    items, use_fallback, index_url = fetch_and_filter_items(workspace, filters, order_by=None)
 
     # Count occurrences of each field value
     counts = {}
@@ -393,18 +406,31 @@ def aggregate_items(workspace):
                 value = None
                 break
 
-        # Convert value to string key (JSON doesn't support all types as keys)
+        # Keep the original value for the response
         if value is None:
-            key_str = "null"
+            value_key = None
         elif isinstance(value, (list, dict)):
-            # For complex types, convert to JSON string
-            key_str = json.dumps(value, sort_keys=True)
+            # For complex types, use JSON string as internal key for counting
+            value_key = json.dumps(value, sort_keys=True)
         else:
-            key_str = str(value)
+            value_key = value
 
-        counts[key_str] = counts.get(key_str, 0) + 1
+        counts[value_key] = counts.get(value_key, 0) + 1
 
-    return counts, 200
+    # Convert to list of objects and sort by count descending
+    result = [
+        {"value": value, "count": count}
+        for value, count in counts.items()
+    ]
+    result.sort(key=lambda x: x["count"], reverse=True)
+
+    # Add headers to indicate fallback was used
+    response = flask.jsonify(result)
+    if use_fallback:
+        response.headers['X-Fallback-Mode'] = 'true'
+        if index_url:
+            response.headers['X-Index-URL'] = index_url
+    return response, 200
 
 @app.get("/<workspace>/<item_id>")
 def get_item(workspace, item_id):

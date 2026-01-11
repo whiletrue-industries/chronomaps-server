@@ -620,8 +620,13 @@ class TestAggregateEndpoint:
                 return config_ref
             return Mock()
 
+        # Create mock query chain
+        mock_query = Mock()
+        mock_query.order_by.return_value.stream.return_value = [mock_doc1, mock_doc2, mock_doc3, mock_doc4]
+
         mock_collection = Mock()
         mock_collection.document.side_effect = mock_document
+        mock_collection.order_by.return_value = mock_query.order_by.return_value
         mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3, mock_doc4]
         mock_db.collection.return_value = mock_collection
 
@@ -632,9 +637,16 @@ class TestAggregateEndpoint:
 
         assert response.status_code == 200
         data = json.loads(response.data)
-        assert data["active"] == 2
-        assert data["inactive"] == 1
-        assert data["null"] == 1
+        assert isinstance(data, list)
+        assert len(data) == 3
+
+        # Should be sorted by count descending
+        assert data[0]["value"] == "active"
+        assert data[0]["count"] == 2
+        assert data[1]["value"] in ["inactive", None]
+        assert data[1]["count"] == 1
+        assert data[2]["value"] in ["inactive", None]
+        assert data[2]["count"] == 1
 
     def test_aggregate_by_nested_field(self, client, mock_db, sample_workspace_config):
         """Test aggregating items by a nested field."""
@@ -667,8 +679,13 @@ class TestAggregateEndpoint:
                 return config_ref
             return Mock()
 
+        # Create mock query chain
+        mock_query = Mock()
+        mock_query.order_by.return_value.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
+
         mock_collection = Mock()
         mock_collection.document.side_effect = mock_document
+        mock_collection.order_by.return_value = mock_query.order_by.return_value
         mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
         mock_db.collection.return_value = mock_collection
 
@@ -679,8 +696,14 @@ class TestAggregateEndpoint:
 
         assert response.status_code == 200
         data = json.loads(response.data)
-        assert data["admin"] == 2
-        assert data["viewer"] == 1
+        assert isinstance(data, list)
+        assert len(data) == 2
+
+        # Should be sorted by count descending
+        assert data[0]["value"] == "admin"
+        assert data[0]["count"] == 2
+        assert data[1]["value"] == "viewer"
+        assert data[1]["count"] == 1
 
     def test_aggregate_missing_field_parameter(self, client, mock_db, sample_workspace_config):
         """Test that missing field parameter returns 400."""
@@ -734,8 +757,13 @@ class TestAggregateEndpoint:
                 return config_ref
             return Mock()
 
+        # Create mock query chain
+        mock_query = Mock()
+        mock_query.order_by.return_value.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
+
         mock_collection = Mock()
         mock_collection.document.side_effect = mock_document
+        mock_collection.order_by.return_value = mock_query.order_by.return_value
         mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
         mock_db.collection.return_value = mock_collection
 
@@ -746,8 +774,14 @@ class TestAggregateEndpoint:
 
         assert response.status_code == 200
         data = json.loads(response.data)
-        assert data["1"] == 2
-        assert data["2"] == 1
+        assert isinstance(data, list)
+        assert len(data) == 2
+
+        # Should be sorted by count descending
+        assert data[0]["value"] == 1
+        assert data[0]["count"] == 2
+        assert data[1]["value"] == 2
+        assert data[1]["count"] == 1
 
     def test_aggregate_requires_authentication(self, client, mock_db, sample_workspace_config):
         """Test that aggregate endpoint requires authentication."""
@@ -770,6 +804,74 @@ class TestAggregateEndpoint:
 
         # Should fail authentication
         assert response.status_code in [401, 403, 404]
+
+    def test_aggregate_with_filters(self, client, mock_db, sample_workspace_config):
+        """Test aggregating items with filters applied."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        # Create mock documents with different status and priority values
+        mock_doc1 = Mock()
+        mock_doc1.to_dict.return_value = {
+            "metadata": {"status": "active", "priority": 1},
+            "key": "key1"
+        }
+        mock_doc1.id = "item1"
+
+        mock_doc2 = Mock()
+        mock_doc2.to_dict.return_value = {
+            "metadata": {"status": "active", "priority": 2},
+            "key": "key2"
+        }
+        mock_doc2.id = "item2"
+
+        mock_doc3 = Mock()
+        mock_doc3.to_dict.return_value = {
+            "metadata": {"status": "inactive", "priority": 1},
+            "key": "key3"
+        }
+        mock_doc3.id = "item3"
+
+        mock_doc4 = Mock()
+        mock_doc4.to_dict.return_value = {
+            "metadata": {"status": "active", "priority": 1},
+            "key": "key4"
+        }
+        mock_doc4.id = "item4"
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        # Create mock query chain that raises index error to trigger fallback
+        mock_query_chain = Mock()
+        mock_query_chain.stream.side_effect = Exception(
+            "The query requires an index. You can create it here: https://console.firebase.google.com/..."
+        )
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_collection.order_by.return_value.where.return_value = mock_query_chain
+        # Fallback will fetch all items
+        mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3, mock_doc4]
+        mock_db.collection.return_value = mock_collection
+
+        # Aggregate by priority, but only for active items
+        response = client.get(
+            "/test-workspace/items/aggregate?field=priority&filters=metadata.status == \"active\"",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert isinstance(data, list)
+        # Should only include active items: 2x priority 1, 1x priority 2
+        assert len(data) == 2
+        assert data[0]["value"] == 1
+        assert data[0]["count"] == 2
+        assert data[1]["value"] == 2
+        assert data[1]["count"] == 1
 
 
 if __name__ == "__main__":

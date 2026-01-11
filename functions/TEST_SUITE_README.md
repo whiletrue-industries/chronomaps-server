@@ -8,19 +8,20 @@ This document describes the comprehensive test suite and improvements made to th
 
 ### 1. Aggregate Endpoint
 
-**Location:** `functions/chronomaps_api/__init__.py` (line 358)
+**Location:** `functions/chronomaps_api/__init__.py` (line 371)
 
-A new endpoint for aggregating items by field values.
+A new endpoint for aggregating items by field values with optional filtering.
 
 **Endpoint:** `GET /<workspace>/items/aggregate`
 
 **Query Parameters:**
 - `field` (required) - The field name in metadata to aggregate by (supports nested fields with dot notation)
+- `filters` (optional) - Pipe-separated filters to apply before aggregation (same format as `/items` endpoint)
 
 **Response:**
-- Returns a JSON object with field values as keys and counts as values
-- Includes `"null"` key for items without the specified field
-- Complex values (arrays, objects) are JSON-stringified as keys
+- Returns a JSON array of objects with `value` and `count` fields
+- Results sorted by count (most common first)
+- Includes `null` for items without the specified field
 
 **Example Usage:**
 ```bash
@@ -28,30 +29,58 @@ A new endpoint for aggregating items by field values.
 GET /workspace-id/items/aggregate?field=status
 
 Response:
-{
-  "active": 15,
-  "inactive": 8,
-  "null": 2
-}
+[
+  {"value": "active", "count": 15},
+  {"value": "inactive", "count": 8},
+  {"value": null, "count": 2}
+]
 
 # Count items by nested field
 GET /workspace-id/items/aggregate?field=user.role
 
 Response:
-{
-  "admin": 3,
-  "editor": 12,
-  "viewer": 25
-}
+[
+  {"value": "viewer", "count": 25},
+  {"value": "editor", "count": 12},
+  {"value": "admin", "count": 3}
+]
+
+# Count with filters
+GET /workspace-id/items/aggregate?field=priority&filters=status==active
+
+Response:
+[
+  {"value": 1, "count": 20},
+  {"value": 2, "count": 15}
+]
 ```
 
 **Features:**
 - Supports nested field paths (e.g., `user.role`, `metadata.tags`)
-- Handles missing fields (counted as `"null"`)
+- Handles missing fields (counted as `null`)
 - Works with string, numeric, boolean, array, and object values
+- Results sorted by count descending (most common first)
+- Supports filtering before aggregation
+- Uses `fetch_and_filter_items` helper to avoid code duplication
 - Requires authentication (admin, collaborate, or view access)
+- Uses in-memory fallback if Firestore indexes are missing
 
-### 2. In-Memory Filtering and Sorting Fallback
+### 2. Shared Filtering Logic
+
+**Location:** `functions/chronomaps_api/__init__.py` (line 141)
+
+To avoid code duplication between `/items` and `/items/aggregate` endpoints, a shared helper function was created:
+
+**Function:** `fetch_and_filter_items(workspace, filters=None, order_by=None)`
+
+**Features:**
+- Consolidates item fetching and filtering logic
+- Used by both `/items` and `/items/aggregate` endpoints
+- Tries Firestore queries first, falls back to in-memory processing
+- Returns items along with fallback/index status
+- Reduces code duplication and ensures consistent behavior
+
+### 3. In-Memory Filtering and Sorting Fallback
 
 **Location:** `functions/chronomaps_api/__init__.py`
 
@@ -75,7 +104,7 @@ When a Firestore index is missing, the API now automatically falls back to in-me
   - Supports ascending and descending order
   - Handles None values (pushed to end of results)
 
-### 2. Automatic Firestore Index Creation
+### 4. Automatic Firestore Index Creation
 
 **Location:** `functions/chronomaps_api/__init__.py`
 
@@ -97,7 +126,7 @@ When an index is missing, the system now automatically attempts to create it via
 **Environment Variables Required:**
 - `GCP_PROJECT` or `GOOGLE_CLOUD_PROJECT` - GCP project ID for index creation
 
-### 4. Comprehensive Test Suite
+### 5. Comprehensive Test Suite
 
 **Location:** `functions/test_chronomaps_api.py`
 
@@ -150,16 +179,17 @@ A comprehensive test suite covering all API endpoints and functionality.
 7. **TestIndexCreation** (1 test)
    - Automatic index creation functionality
 
-8. **TestAggregateEndpoint** (5 tests)
+8. **TestAggregateEndpoint** (6 tests)
    - Aggregate by simple field
    - Aggregate by nested field
    - Missing field parameter validation
    - Aggregate with numeric values
    - Authentication requirement
+   - Aggregate with filters
 
-**Total:** 34 tests, all passing ✓
+**Total:** 35 tests, all passing ✓
 
-### 5. CI/CD Integration
+### 6. CI/CD Integration
 
 **Location:** `.github/workflows/`
 
@@ -175,7 +205,7 @@ Tests are now integrated into the CI/CD pipeline to ensure code quality before d
 3. Deployment only proceeds if tests pass
 4. Coverage reports uploaded to Codecov
 
-### 6. Testing Configuration
+### 7. Testing Configuration
 
 **Files Added:**
 - `functions/pytest.ini` - Pytest configuration
