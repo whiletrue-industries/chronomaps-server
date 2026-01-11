@@ -30,8 +30,18 @@ except ValueError:
         cred = credentials.Certificate(service_key_path)
         firebase_admin.initialize_app(cred)
     else:
-        # CI/CD environment - initialize with mock credential to avoid "Application Default Credentials" error
-        mock_cred = Mock()
+        # CI/CD environment - create a mock credential that passes Firebase validation
+        # We need to inherit from credentials.Base to pass the validation
+        from firebase_admin.credentials import Base
+
+        class MockCredential(Base):
+            def get_credential(self):
+                # Return a mock google credential
+                mock_google_cred = Mock()
+                mock_google_cred.project_id = "test-project"
+                return mock_google_cred
+
+        mock_cred = MockCredential()
         firebase_admin.initialize_app(mock_cred, {'projectId': 'test-project'})
 
 
