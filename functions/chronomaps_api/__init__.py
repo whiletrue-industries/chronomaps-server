@@ -355,6 +355,57 @@ def get_items(workspace):
             response.headers['X-Index-URL'] = index_url
     return response, 200
 
+@app.get("/<workspace>/items/aggregate")
+def aggregate_items(workspace):
+    """
+    Aggregate items by a field value.
+
+    Query parameters:
+    - field: The field name in metadata to aggregate by (required)
+
+    Returns:
+    - A dictionary with field values as keys and counts as values
+    - Includes null for items without the field
+    """
+    auth_key = flask.request.headers.get("Authorization")
+    privilege = authenticate(workspace, auth_key, ["admin", "collaborate", "view"])
+    field = flask.request.args.get("field")
+
+    if not field:
+        flask.abort(400, "Missing required parameter: field")
+
+    # Fetch all items from the workspace
+    items = db.collection(workspace).stream()
+    items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
+    items = [item for item in items if item['id'][0] != "."]
+
+    # Count occurrences of each field value
+    counts = {}
+    for item in items:
+        metadata = item.get("metadata", {})
+
+        # Navigate nested keys (e.g., "nested.field")
+        value = metadata
+        for key in field.split('.'):
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                value = None
+                break
+
+        # Convert value to string key (JSON doesn't support all types as keys)
+        if value is None:
+            key_str = "null"
+        elif isinstance(value, (list, dict)):
+            # For complex types, convert to JSON string
+            key_str = json.dumps(value, sort_keys=True)
+        else:
+            key_str = str(value)
+
+        counts[key_str] = counts.get(key_str, 0) + 1
+
+    return counts, 200
+
 @app.get("/<workspace>/<item_id>")
 def get_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")

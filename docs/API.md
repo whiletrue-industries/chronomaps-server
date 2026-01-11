@@ -273,6 +273,75 @@ GET /my-workspace/items?page=0&page_size=20&order_by=-created_at&filters=plausib
 
 ---
 
+#### Aggregate Items
+
+```http
+GET /<workspace>/items/aggregate?field=<field_name>
+```
+
+**Authentication**: Any valid workspace key
+
+**Query Parameters**:
+- `field` (required): The field name in metadata to aggregate by (supports nested fields with dot notation)
+
+**Description**: Counts items grouped by unique values of the specified field. Useful for analytics and understanding data distribution.
+
+**Features**:
+- Supports nested field paths (e.g., `user.role`, `metadata.tags`)
+- Returns `"null"` for items without the specified field
+- Works with string, numeric, boolean, array, and object values
+- Complex values (arrays, objects) are JSON-stringified as keys
+
+**Example**:
+```bash
+# Count items by status
+GET /my-workspace/items/aggregate?field=status
+```
+
+**Response**:
+```json
+{
+  "active": 15,
+  "inactive": 8,
+  "null": 2
+}
+```
+
+**Example with nested field**:
+```bash
+# Count items by user role
+GET /my-workspace/items/aggregate?field=user.role
+```
+
+**Response**:
+```json
+{
+  "admin": 3,
+  "editor": 12,
+  "viewer": 25,
+  "null": 5
+}
+```
+
+**Example with numeric field**:
+```bash
+# Count items by plausibility score
+GET /my-workspace/items/aggregate?field=plausibility
+```
+
+**Response**:
+```json
+{
+  "75": 10,
+  "80": 15,
+  "85": 8,
+  "90": 3,
+  "null": 2
+}
+```
+
+---
+
 #### Get Item
 
 ```http
@@ -728,6 +797,36 @@ curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filt
 # Get automatic items that are preferred futures
 curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filters=automatic==true|favorable_future==prefer" \
   -H "Authorization: KEY123"
+```
+
+### Aggregating Items
+
+```bash
+# Count items by screenshot type
+curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items/aggregate?field=screenshot_type" \
+  -H "Authorization: KEY123"
+
+# Response:
+# {
+#   "news_article": 25,
+#   "social_media": 18,
+#   "fake_media": 12,
+#   "future_history_page": 8,
+#   "null": 3
+# }
+
+# Count items by favorable_future preference
+curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items/aggregate?field=favorable_future" \
+  -H "Authorization: KEY123"
+
+# Response:
+# {
+#   "prefer": 30,
+#   "prevent": 15,
+#   "mostly_prefer": 10,
+#   "mostly_prevent": 5,
+#   "null": 2
+# }
 ```
 
 ---

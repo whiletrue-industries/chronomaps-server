@@ -6,7 +6,52 @@ This document describes the comprehensive test suite and improvements made to th
 
 ## Changes Implemented
 
-### 1. In-Memory Filtering and Sorting Fallback
+### 1. Aggregate Endpoint
+
+**Location:** `functions/chronomaps_api/__init__.py` (line 358)
+
+A new endpoint for aggregating items by field values.
+
+**Endpoint:** `GET /<workspace>/items/aggregate`
+
+**Query Parameters:**
+- `field` (required) - The field name in metadata to aggregate by (supports nested fields with dot notation)
+
+**Response:**
+- Returns a JSON object with field values as keys and counts as values
+- Includes `"null"` key for items without the specified field
+- Complex values (arrays, objects) are JSON-stringified as keys
+
+**Example Usage:**
+```bash
+# Count items by status
+GET /workspace-id/items/aggregate?field=status
+
+Response:
+{
+  "active": 15,
+  "inactive": 8,
+  "null": 2
+}
+
+# Count items by nested field
+GET /workspace-id/items/aggregate?field=user.role
+
+Response:
+{
+  "admin": 3,
+  "editor": 12,
+  "viewer": 25
+}
+```
+
+**Features:**
+- Supports nested field paths (e.g., `user.role`, `metadata.tags`)
+- Handles missing fields (counted as `"null"`)
+- Works with string, numeric, boolean, array, and object values
+- Requires authentication (admin, collaborate, or view access)
+
+### 2. In-Memory Filtering and Sorting Fallback
 
 **Location:** `functions/chronomaps_api/__init__.py`
 
@@ -52,7 +97,7 @@ When an index is missing, the system now automatically attempts to create it via
 **Environment Variables Required:**
 - `GCP_PROJECT` or `GOOGLE_CLOUD_PROJECT` - GCP project ID for index creation
 
-### 3. Comprehensive Test Suite
+### 4. Comprehensive Test Suite
 
 **Location:** `functions/test_chronomaps_api.py`
 
@@ -105,9 +150,16 @@ A comprehensive test suite covering all API endpoints and functionality.
 7. **TestIndexCreation** (1 test)
    - Automatic index creation functionality
 
-**Total:** 29 tests, all passing ✓
+8. **TestAggregateEndpoint** (5 tests)
+   - Aggregate by simple field
+   - Aggregate by nested field
+   - Missing field parameter validation
+   - Aggregate with numeric values
+   - Authentication requirement
 
-### 4. CI/CD Integration
+**Total:** 34 tests, all passing ✓
+
+### 5. CI/CD Integration
 
 **Location:** `.github/workflows/`
 
@@ -123,7 +175,7 @@ Tests are now integrated into the CI/CD pipeline to ensure code quality before d
 3. Deployment only proceeds if tests pass
 4. Coverage reports uploaded to Codecov
 
-### 5. Testing Configuration
+### 6. Testing Configuration
 
 **Files Added:**
 - `functions/pytest.ini` - Pytest configuration

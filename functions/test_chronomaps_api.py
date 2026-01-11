@@ -578,5 +578,199 @@ class TestIndexCreation:
             assert call_args[1]["json"]["queryScope"] == "COLLECTION"
 
 
+class TestAggregateEndpoint:
+    """Test the aggregate endpoint functionality."""
+
+    def test_aggregate_by_simple_field(self, client, mock_db, sample_workspace_config):
+        """Test aggregating items by a simple field."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        # Create mock documents with different status values
+        mock_doc1 = Mock()
+        mock_doc1.to_dict.return_value = {
+            "metadata": {"status": "active"},
+            "key": "key1"
+        }
+        mock_doc1.id = "item1"
+
+        mock_doc2 = Mock()
+        mock_doc2.to_dict.return_value = {
+            "metadata": {"status": "active"},
+            "key": "key2"
+        }
+        mock_doc2.id = "item2"
+
+        mock_doc3 = Mock()
+        mock_doc3.to_dict.return_value = {
+            "metadata": {"status": "inactive"},
+            "key": "key3"
+        }
+        mock_doc3.id = "item3"
+
+        mock_doc4 = Mock()
+        mock_doc4.to_dict.return_value = {
+            "metadata": {},  # Missing status field
+            "key": "key4"
+        }
+        mock_doc4.id = "item4"
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3, mock_doc4]
+        mock_db.collection.return_value = mock_collection
+
+        response = client.get(
+            "/test-workspace/items/aggregate?field=status",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["active"] == 2
+        assert data["inactive"] == 1
+        assert data["null"] == 1
+
+    def test_aggregate_by_nested_field(self, client, mock_db, sample_workspace_config):
+        """Test aggregating items by a nested field."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        mock_doc1 = Mock()
+        mock_doc1.to_dict.return_value = {
+            "metadata": {"user": {"role": "admin"}},
+            "key": "key1"
+        }
+        mock_doc1.id = "item1"
+
+        mock_doc2 = Mock()
+        mock_doc2.to_dict.return_value = {
+            "metadata": {"user": {"role": "admin"}},
+            "key": "key2"
+        }
+        mock_doc2.id = "item2"
+
+        mock_doc3 = Mock()
+        mock_doc3.to_dict.return_value = {
+            "metadata": {"user": {"role": "viewer"}},
+            "key": "key3"
+        }
+        mock_doc3.id = "item3"
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
+        mock_db.collection.return_value = mock_collection
+
+        response = client.get(
+            "/test-workspace/items/aggregate?field=user.role",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["admin"] == 2
+        assert data["viewer"] == 1
+
+    def test_aggregate_missing_field_parameter(self, client, mock_db, sample_workspace_config):
+        """Test that missing field parameter returns 400."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_db.collection.return_value = mock_collection
+
+        response = client.get(
+            "/test-workspace/items/aggregate",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 400
+
+    def test_aggregate_with_numeric_values(self, client, mock_db, sample_workspace_config):
+        """Test aggregating items by numeric field values."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        mock_doc1 = Mock()
+        mock_doc1.to_dict.return_value = {
+            "metadata": {"priority": 1},
+            "key": "key1"
+        }
+        mock_doc1.id = "item1"
+
+        mock_doc2 = Mock()
+        mock_doc2.to_dict.return_value = {
+            "metadata": {"priority": 1},
+            "key": "key2"
+        }
+        mock_doc2.id = "item2"
+
+        mock_doc3 = Mock()
+        mock_doc3.to_dict.return_value = {
+            "metadata": {"priority": 2},
+            "key": "key3"
+        }
+        mock_doc3.id = "item3"
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_collection.stream.return_value = [mock_doc1, mock_doc2, mock_doc3]
+        mock_db.collection.return_value = mock_collection
+
+        response = client.get(
+            "/test-workspace/items/aggregate?field=priority",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["1"] == 2
+        assert data["2"] == 1
+
+    def test_aggregate_requires_authentication(self, client, mock_db, sample_workspace_config):
+        """Test that aggregate endpoint requires authentication."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        mock_collection = Mock()
+        mock_collection.document.side_effect = mock_document
+        mock_db.collection.return_value = mock_collection
+
+        response = client.get(
+            "/test-workspace/items/aggregate?field=status",
+            headers={"Authorization": "invalid-key"}
+        )
+
+        # Should fail authentication
+        assert response.status_code in [401, 403, 404]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
