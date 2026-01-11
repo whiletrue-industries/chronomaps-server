@@ -7,29 +7,32 @@ This file sets up mocks for Firebase Admin SDK before any module imports.
 import sys
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-import firebase_admin
+import os
 
-# Initialize Firebase in test mode before any imports
+# Mock firebase_admin.firestore before any imports to avoid credential issues in CI
+_mock_firestore_client = Mock()
+
+# Patch firestore.client before firebase imports
+sys.modules['firebase_admin.firestore'] = Mock()
+sys.modules['firebase_admin.firestore'].client = Mock(return_value=_mock_firestore_client)
+
+import firebase_admin
+from firebase_admin import credentials
+
 try:
     firebase_admin.get_app()
 except ValueError:
-    # App doesn't exist, initialize with mock credentials
-    from firebase_admin import credentials
-    import os
-
-    # Try to use service account key if available, otherwise use mock
+    # App doesn't exist, initialize with credentials
     service_key_path = '/Users/adam/Code/art/chronomaps-server/serviceAccountKey.json'
+
     if os.path.exists(service_key_path):
+        # Local development - use service account
         cred = credentials.Certificate(service_key_path)
         firebase_admin.initialize_app(cred)
     else:
-        # For CI/CD environments without service account
-        cred = credentials.ApplicationDefault()
-        try:
-            firebase_admin.initialize_app(cred)
-        except:
-            # Last resort: use mock
-            pass
+        # CI/CD environment - initialize with mock credential to avoid "Application Default Credentials" error
+        mock_cred = Mock()
+        firebase_admin.initialize_app(mock_cred, {'projectId': 'test-project'})
 
 
 @pytest.fixture(scope="session", autouse=True)
