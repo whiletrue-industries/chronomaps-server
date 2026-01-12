@@ -29,7 +29,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     if item_id and item_key:
         params = {'item-key': item_key}
         item_url = os.path.join(url, item_id)
-        response = requests.get(item_url, json=record, headers={'Authorization': api_key}, params=params)
+        response = requests.get(item_url, headers={'Authorization': api_key}, params=params)
         if response.status_code == 403:
             return dict(error=f"Workspace {workspace} and {item_id} not authorized for update"), 403
         if response.status_code == 404:
