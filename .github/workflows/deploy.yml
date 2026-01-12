@@ -4,7 +4,7 @@ on:
     branches:
       - main
 jobs:
-  main:
+  deploy:
     name: Deploy to Firebase
     runs-on: ubuntu-latest
     steps:

@@ -273,6 +273,77 @@ GET /my-workspace/items?page=0&page_size=20&order_by=-created_at&filters=plausib
 
 ---
 
+#### Aggregate Items
+
+```http
+GET /<workspace>/items/aggregate?field=<field_name>&filters=<filter_expr>
+```
+
+**Authentication**: Any valid workspace key
+
+**Query Parameters**:
+- `field` (required): The field name in metadata to aggregate by (supports nested fields with dot notation)
+- `filters` (optional): Pipe-separated filters to apply before aggregation (same format as `/items` endpoint)
+
+**Description**: Counts items grouped by unique values of the specified field. Useful for analytics and understanding data distribution. Returns a sorted list of value-count pairs.
+
+**Features**:
+- Supports nested field paths (e.g., `user.role`, `metadata.tags`)
+- Returns `null` for items without the specified field
+- Works with string, numeric, boolean, array, and object values
+- Results sorted by count (most common first)
+- Supports filtering before aggregation
+- Uses in-memory fallback if Firestore indexes are missing
+
+**Example**:
+```bash
+# Count items by status
+GET /my-workspace/items/aggregate?field=status
+```
+
+**Response**:
+```json
+[
+  {"value": "active", "count": 15},
+  {"value": "inactive", "count": 8},
+  {"value": null, "count": 2}
+]
+```
+
+**Example with nested field**:
+```bash
+# Count items by user role
+GET /my-workspace/items/aggregate?field=user.role
+```
+
+**Response**:
+```json
+[
+  {"value": "viewer", "count": 25},
+  {"value": "editor", "count": 12},
+  {"value": "admin", "count": 3},
+  {"value": null, "count": 5}
+]
+```
+
+**Example with filters**:
+```bash
+# Count plausibility scores only for preferred futures
+GET /my-workspace/items/aggregate?field=plausibility&filters=favorable_future==prefer
+```
+
+**Response**:
+```json
+[
+  {"value": 80, "count": 15},
+  {"value": 75, "count": 10},
+  {"value": 85, "count": 8},
+  {"value": 90, "count": 3}
+]
+```
+
+---
+
 #### Get Item
 
 ```http
@@ -728,6 +799,47 @@ curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filt
 # Get automatic items that are preferred futures
 curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filters=automatic==true|favorable_future==prefer" \
   -H "Authorization: KEY123"
+```
+
+### Aggregating Items
+
+```bash
+# Count items by screenshot type
+curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items/aggregate?field=screenshot_type" \
+  -H "Authorization: KEY123"
+
+# Response:
+# [
+#   {"value": "news_article", "count": 25},
+#   {"value": "social_media", "count": 18},
+#   {"value": "fake_media", "count": 12},
+#   {"value": "future_history_page", "count": 8},
+#   {"value": null, "count": 3}
+# ]
+
+# Count items by favorable_future preference (sorted by most common)
+curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items/aggregate?field=favorable_future" \
+  -H "Authorization: KEY123"
+
+# Response:
+# [
+#   {"value": "prefer", "count": 30},
+#   {"value": "prevent", "count": 15},
+#   {"value": "mostly_prefer", "count": 10},
+#   {"value": "mostly_prevent", "count": 5},
+#   {"value": null, "count": 2}
+# ]
+
+# Count high plausibility items by favorable_future (with filters)
+curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items/aggregate?field=favorable_future&filters=plausibility>70" \
+  -H "Authorization: KEY123"
+
+# Response:
+# [
+#   {"value": "prefer", "count": 20},
+#   {"value": "prevent", "count": 10},
+#   {"value": "mostly_prefer", "count": 5}
+# ]
 ```
 
 ---

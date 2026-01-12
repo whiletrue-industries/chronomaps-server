@@ -1,0 +1,52 @@
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    name: Run API Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        cd functions
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+        cd ..
+
+    - name: Run tests with pytest
+      run: |
+        cd functions
+        pytest test_chronomaps_api.py -v --cov=chronomaps_api --cov-report=term-missing --cov-report=xml
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./functions/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Check test results
+      if: failure()
+      run: |
+        echo "Tests failed! Please fix the failing tests before deploying."
+        exit 1
