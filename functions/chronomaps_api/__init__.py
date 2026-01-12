@@ -223,11 +223,23 @@ def create_firestore_index(workspace, order_by_field, filters_str):
             print("Firebase app not initialized, cannot create index")
             return
 
-        # Parse the project ID from the database reference
-        # For now, we'll need to get it from environment or config
-        project_id = os.environ.get('GCP_PROJECT') or os.environ.get('GOOGLE_CLOUD_PROJECT')
+        # Get project ID from Firebase app options or credential
+        project_id = None
+        if hasattr(app_instance.options, 'get'):
+            project_id = app_instance.options.get('projectId')
+
+        # Fallback to environment variables (automatically set in GCP Cloud Functions)
         if not project_id:
-            print("Project ID not found in environment variables")
+            project_id = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+
+        # Try to get from credential
+        if not project_id and hasattr(cred, 'project_id'):
+            google_cred = cred.get_credential()
+            if hasattr(google_cred, 'project_id'):
+                project_id = google_cred.project_id
+
+        if not project_id:
+            print("Project ID not found. Please set GOOGLE_CLOUD_PROJECT environment variable.")
             return
 
         # Build the index definition
