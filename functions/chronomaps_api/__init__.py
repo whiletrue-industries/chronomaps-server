@@ -357,6 +357,14 @@ def get_items(workspace):
     order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
 
+    # Add moderation filter for non-admin users
+    if privilege < PRIVILEGE_ADMIN:
+        moderation_filter = "_private_moderation>=3"
+        if filters:
+            filters = f"{filters}|{moderation_filter}"
+        else:
+            filters = moderation_filter
+
     # Fetch and filter items
     items, use_fallback, index_url = fetch_and_filter_items(workspace, filters, order_by)
 
