@@ -6,6 +6,7 @@ import hashlib
 import threading
 import requests
 import os
+import re
 
 from config import PRIVATE_KEY
 from .resolve_firebase_user import require_firebase_auth
@@ -55,6 +56,30 @@ def sanitize_metadata(metadata, exclude_private=True):
         ret['author_id'] = calculate_author_id(metadata['_private_email'])
     return ret
 
+def parse_filter_expression(filter_expr):
+    """
+    Parse a filter expression into (field, operator, value).
+    Supports both formats:
+    - "field op value" (with spaces)
+    - "field==value" or "field>=value" (without spaces)
+    """
+    # Try regex pattern first to handle both with and without spaces
+    # Pattern: field_name + operator + value
+    # Operators: ==, !=, >=, <=, >, <
+    pattern = r'^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$'
+    match = re.match(pattern, filter_expr.strip())
+
+    if match:
+        field, op, value = match.groups()
+        return field.strip(), op, value.strip()
+
+    # Fallback to original whitespace-based split for backward compatibility
+    parts = filter_expr.split(None, 2)
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+
+    raise ValueError(f"Invalid filter expression: {filter_expr}")
+
 def apply_filters_in_memory(items, filters_str):
     """Apply filters to items in memory."""
     if not filters_str:
@@ -62,7 +87,7 @@ def apply_filters_in_memory(items, filters_str):
 
     filters = filters_str.split("|")
     for filter_expr in filters:
-        filter_key, op, value = filter_expr.split(None, 2)
+        filter_key, op, value = parse_filter_expression(filter_expr)
         try:
             value = json.loads(value)
         except:
@@ -164,7 +189,7 @@ def fetch_and_filter_items(workspace, filters=None, order_by=None):
         if filters:
             filters_list = filters.split("|")
             for filter_expr in filters_list:
-                filter_key, op, value = filter_expr.split(None, 2)
+                filter_key, op, value = parse_filter_expression(filter_expr)
                 try:
                     value = json.loads(value)
                 except:
@@ -359,7 +384,7 @@ def get_items(workspace):
 
     # Add moderation filter for non-admin users
     if privilege < PRIVILEGE_ADMIN:
-        moderation_filter = "metadata._private_moderation >= 3"
+        moderation_filter = "metadata._private_moderation>=3"
         if filters:
             filters = f"{filters}|{moderation_filter}"
         else:
