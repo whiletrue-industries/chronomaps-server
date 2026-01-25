@@ -359,7 +359,7 @@ def get_items(workspace):
 
     # Add moderation filter for non-admin users
     if privilege < PRIVILEGE_ADMIN:
-        moderation_filter = "_private_moderation>=3"
+        moderation_filter = "metadata._private_moderation >= 3"
         if filters:
             filters = f"{filters}|{moderation_filter}"
         else:
