@@ -55,6 +55,35 @@ Each workspace has three UUID4 keys:
 
 ---
 
+## Moderation Levels
+
+Items in the system have a `_private_moderation` field that controls their visibility and status. The moderation system uses numeric values to represent different states:
+
+| Value | Label | Description |
+|-------|-------|-------------|
+| 5 | Highlighted | Featured/exemplary content |
+| 4 | Approved | Reviewed and approved for display |
+| 3 | Not flagged | Default state, visible to all users |
+| 2 | Pending | Awaiting moderation review |
+| 1 | Flagged | Marked for review or concern |
+| 0 | Rejected | Reviewed and rejected |
+| -1 | Deleted | Soft-deleted content |
+
+### Moderation Filtering
+
+- **Admin users** (privilege level 4) can see and manage items at any moderation level
+- **Non-admin users** (privilege levels 0-3) can only see items with `_private_moderation >= 3`
+
+### Default Moderation Level
+
+When creating a workspace, you can set a `default_moderation_level` in the workspace metadata. This value determines the initial moderation status for new items created via the screenshot handler:
+
+- If specified, new items will use this value as their `_private_moderation`
+- If not specified, defaults to `3` (Not flagged)
+- Recommended values: `2` (Pending) for manual moderation workflows, or `3` (Not flagged) for automatic approval
+
+---
+
 ## Core API Endpoints
 
 Base URL: `https://<region>-<project>.cloudfunctions.net/chronomaps_api`
@@ -250,6 +279,13 @@ GET /<workspace>/items?page=<int>&page_size=<int>&order_by=<field>&filters=<str>
 - `<`: Less than
 - `>=`: Greater than or equal
 - `<=`: Less than or equal
+
+**Moderation Filtering**:
+Non-admin users automatically have a filter applied to only show items with `_private_moderation >= 3` (Not flagged or higher). This means:
+- **Admin users** see all items regardless of moderation status
+- **Non-admin users** (collaborate, view, public) only see items that are "Not flagged", "Approved", or "Highlighted"
+
+See [Moderation Levels](#moderation-levels) for the complete list of moderation statuses.
 
 **Example**:
 ```
@@ -614,6 +650,14 @@ Stored in Firestore at `<workspace>/.config`
 }
 ```
 
+**Metadata Fields**:
+- `title`: Workspace display name
+- `description`: Workspace description
+- `event_name`: Associated event name
+- `email-template`: Email template for notifications
+- `default_moderation_level`: Initial moderation level for new items (default: 3). See [Moderation Levels](#moderation-levels) for available values.
+- `final-ingress-message`: Final message shown to users
+
 ---
 
 ### Item Structure
@@ -650,7 +694,7 @@ Stored in Firestore at `<workspace>/<item_id>`
 
     // Private Fields (require PRIVILEGE_PRIVATE_KEY or higher)
     "_private_email": "user@example.com",
-    "_private_moderation": 3,
+    "_private_moderation": 3,  // Moderation status (see Moderation Levels section)
     "_private_ingress-thread-id": "thread_...",
     "_key": "uuid4-item-key"
   }
