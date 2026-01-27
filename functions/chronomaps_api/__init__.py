@@ -52,7 +52,7 @@ def sanitize_metadata(metadata, exclude_private=True):
     ret = metadata.copy()
     if exclude_private:
         ret = {k: v for k, v in metadata.items() if not (k.startswith(PRIVATE_KEY) or k == 'embedding')}
-    if 'author_id' not in metadata and '_private_email' in metadata:
+    if 'author_id' not in metadata and '_private_email' in metadata and metadata['_private_email']:
         ret['author_id'] = calculate_author_id(metadata['_private_email'])
     return ret
 
