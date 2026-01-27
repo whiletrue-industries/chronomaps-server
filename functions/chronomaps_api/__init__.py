@@ -238,13 +238,13 @@ def create_firestore_index(workspace, order_by_field, filters_str):
     This should be called asynchronously to avoid blocking the request.
     """
     try:
-        # Get credentials from firebase_admin
-        from firebase_admin import _apps
-        if 'default' in _apps:
-            app_instance = _apps['default']
+        # Get credentials from firebase_admin using the public API
+        import firebase_admin
+        try:
+            app_instance = firebase_admin.get_app()
             cred = app_instance.credential
             access_token = cred.get_access_token().access_token
-        else:
+        except ValueError:
             print("Firebase app not initialized, cannot create index")
             return
 
