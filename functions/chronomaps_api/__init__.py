@@ -534,14 +534,18 @@ def update_workspace(workspace):
         return value.lower() == 'true'
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin"])
-    metadata = flask.request.json
+    metadata = flask.request.get_json(silent=True)
     public = flask.request.args.get("public", type=is_it_true)
     collaborate = flask.request.args.get("collaborate", type=is_it_true)
-    updates = {"metadata": metadata}
+    updates = {}
+    if metadata:
+        updates["metadata"] = metadata
     if public is not None:
         updates["config.public"] = public
     if collaborate is not None:
         updates["config.collaborate"] = collaborate
+    if not updates:
+        return {"message": "No updates provided"}, 400
     db.collection(workspace).document(".config").update(updates)
     return {"message": "Workspace updated", "updates": updates}, 200
 
