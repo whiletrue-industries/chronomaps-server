@@ -251,6 +251,38 @@ class TestWorkspaceEndpoints:
             assert "config" in data
             assert "keys" in data["config"]
 
+    def test_create_workspace_preserves_metadata(self, client, mock_db):
+        """Test that workspace creation stores the full request body as metadata."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "test@example.com", "uid": "test-uid"}
+
+            mock_ref = Mock()
+            mock_db.collection.return_value.document.return_value = mock_ref
+
+            workspace_metadata = {
+                "title": "Future Scenarios 2050",
+                "description": "Workshop scenarios",
+                "event_name": "Workshop Jan 2025",
+                "default_moderation_level": 2,
+            }
+
+            response = client.post(
+                "/",
+                json=workspace_metadata,
+                content_type="application/json",
+                headers={"Authorization": "Bearer test-token"}
+            )
+
+            assert response.status_code == 201
+            data = json.loads(response.data)
+
+            # Verify metadata is in the response
+            assert data["config"]["metadata"] == workspace_metadata
+
+            # Verify metadata was written to Firestore
+            set_call = mock_ref.set.call_args[0][0]
+            assert set_call["metadata"] == workspace_metadata
+
     def test_get_workspace(self, client, mock_db, sample_workspace_config):
         """Test getting workspace metadata."""
         mock_ref = Mock()
@@ -282,6 +314,24 @@ class TestWorkspaceEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert "updates" in data
+
+    def test_update_workspace_settings_only(self, client, mock_db, sample_workspace_config):
+        """Test that updating only settings (public/collaborate) does not overwrite metadata."""
+        mock_ref = Mock()
+        mock_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = mock_ref
+
+        response = client.put(
+            "/test-workspace?public=true&collaborate=true",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]},
+        )
+
+        assert response.status_code == 200
+        # Verify the Firestore update did NOT include metadata
+        update_call = mock_ref.update.call_args[0][0]
+        assert "metadata" not in update_call
+        assert update_call["config.public"] is True
+        assert update_call["config.collaborate"] is True
 
     def test_delete_workspace(self, client, mock_db, sample_workspace_config):
         """Test deleting workspace."""

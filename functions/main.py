@@ -4,8 +4,9 @@ from firebase_admin.credentials import Certificate
 from firebase_functions.params import SecretParam
 from firebase_functions import https_fn, options, scheduler_fn
 from config import CONFIG__ITS_TIME, SERVICE_ACCOUNT_JSON
+from io import BytesIO
 import json
-import time 
+import time
 
 # serviceAccount = SecretParam('SERVICE_ACCOUNT_KEY').value
 # cred = credentials.Certificate(json.loads(serviceAccount)) if serviceAccount else None
@@ -27,7 +28,14 @@ CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 # Expose Flask app as a single Cloud Function
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post", "get", "put", "delete"]), secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
 def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
-    with chronomaps_api_app.request_context(req.environ):
+    # Pre-read body and cache it on the original request, then provide a fresh
+    # stream to the nested Flask context. This prevents the functions-framework's
+    # read_request after_request hook from crashing with ClientDisconnected when
+    # it tries to read an already-consumed wsgi.input stream.
+    body = req.get_data()
+    environ = req.environ.copy()
+    environ['wsgi.input'] = BytesIO(body)
+    with chronomaps_api_app.request_context(environ):
         return chronomaps_api_app.full_dispatch_request()
     
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
