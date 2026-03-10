@@ -213,6 +213,11 @@ class TestEnhanceImage:
         assert result["already_existed"] is True
         assert result["enhanced_url"] == enhanced_blob.public_url
         assert result["thumbnail_url"] == thumb_blob.public_url
+        # Should not upload or modify anything when both already exist
+        enhanced_blob.upload_from_file.assert_not_called()
+        enhanced_blob.make_public.assert_not_called()
+        thumb_blob.upload_from_file.assert_not_called()
+        thumb_blob.make_public.assert_not_called()
 
     def test_enhances_and_creates_thumbnail_when_not_existing(self, mock_storage):
         from enhance_image import enhance_image

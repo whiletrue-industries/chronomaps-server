@@ -135,7 +135,6 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
     enhanced_existed = enhanced_blob.exists()
 
     if enhanced_existed:
-        enhanced_blob.make_public()
         enhanced_img = None
     else:
         # Download original
@@ -159,8 +158,6 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
             enhanced_img = Image.open(BytesIO(enhanced_bytes))
         thumb = _create_thumbnail(enhanced_img, thumbnail_size)
         _upload_image(thumb_blob, thumb, quality=85)
-    else:
-        thumb_blob.make_public()
 
     return dict(
         enhanced_url=enhanced_blob.public_url,
