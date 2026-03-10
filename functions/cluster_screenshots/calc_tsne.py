@@ -6,6 +6,7 @@ import requests
 import numpy as np
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 from openai import OpenAI
+from enhance_image import enhance_image as enhance_image_fn, enhance, _normalize_url, STORAGE_BASE_URL
 
 from sklearn.manifold import TSNE
 from scipy.spatial.distance import cdist
@@ -97,38 +98,6 @@ def calc_tsne_grid(X_2d, out_dim):
     grid_jv = grid[col_asses]
     return grid_jv
 
-def white_patch(im: Image.Image,
-                white_pct: float = 90.0,   # “bright” threshold (percentile)
-                sat_thresh: float = 0.20    # drop coloured pixels
-               ) -> Image.Image:
-    """
-    White-balance a scanned page by forcing the brightest,
-    least-saturated pixels to 255 in every channel.
-    """
-    im = im.convert("RGB")
-    arr = np.asarray(im).astype(np.float32)
-
-    # 1. luminance & saturation
-    lum  = arr.mean(axis=2)                       # cheap grayscale
-    cmax = arr.max(axis=2);  cmin = arr.min(axis=2)
-    sat  = np.where(cmax > 0, (cmax - cmin) / cmax, 0)
-
-    # 2. pick candidate “paper” pixels
-    bright   = lum >= np.percentile(lum, white_pct)
-    neutral  = sat  < sat_thresh
-    mask     = bright & neutral
-
-    if not np.any(mask):                          # nothing found → fall back
-        mean   = arr.mean(axis=(0, 1))
-    else:
-        mean   = arr[mask].reshape(-1, 3).mean(axis=0)
-
-    # 3. linear scale so mean → 255
-    scale  = 255.0 / mean
-    result = np.clip(arr * scale, 0, 255).astype(np.uint8)
-
-    return Image.fromarray(result, "RGB")
-
 def gray_world(im: Image.Image) -> Image.Image:
     """
     Scale each RGB channel so that their means are equal
@@ -146,25 +115,13 @@ def gray_world(im: Image.Image) -> Image.Image:
     balanced = np.clip(arr * scale, 0, 255).astype(np.uint8)
     return Image.fromarray(balanced, "RGB")
 
-# ---------- 2.  Contrast stretch to common black/white points ----------
-def stretch_contrast(im: Image.Image,
-                     low_pct: float = 1.0,
-                     high_pct: float = 99.0) -> Image.Image:
-    """
-    Histogram-stretch so the low_pct / high_pct percentiles map to 0/255.
-    Keeps extreme outliers from blowing the image out.
-    """
-    return ImageOps.autocontrast(
-        im, cutoff=(low_pct, 100 - high_pct), preserve_tone=True
-    )                                            # Pillow ≥8.0 supports tuple cutoff
-
 def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     metadata = dict()
     to_save = None
     if record is not None:
         filename = record.get('screenshot_url')
-        filename = filename.replace('https://storage.googleapis.com/chronomaps3.firebasestorage.app', 'https://storage.googleapis.com/chronomaps3-eu')
+        filename = _normalize_url(filename)
         rotate = record.get('plausibility') if isinstance(record.get('plausibility'), int) else 100
         rotate = int(rotate)
         rotate = (100 - rotate) / 100 * 32
@@ -196,26 +153,31 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         img = _image.convert('RGB')
         img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
     else:
-        side_ext = '' if params.SIDE == 1000 else f'.{params.SIDE}'
-        enhanced_filename = filename.replace('.jpeg', f'.enhanced{side_ext}.jpeg')
-        enhanced = True
-        try:
-            img = Image.open(requests.get(enhanced_filename, stream=True).raw)
-            metadata['url'] = enhanced_filename
-        except:
+        if not params.LOCAL:
+            result = enhance_image_fn(screenshot_url=filename, side=params.SIDE)
+            if isinstance(result, tuple):
+                # Error from enhance_image, fall back to original
+                try:
+                    img = Image.open(requests.get(filename, stream=True).raw)
+                except Exception as e:
+                    print('Error opening image:', filename)
+                    raise
+            else:
+                enhanced_url = result['enhanced_url']
+                metadata['url'] = enhanced_url
+                try:
+                    img = Image.open(requests.get(enhanced_url, stream=True).raw)
+                except Exception as e:
+                    print('Error opening enhanced image:', enhanced_url)
+                    raise
+        else:
             try:
                 img = Image.open(requests.get(filename, stream=True).raw)
-                enhanced = False
             except Exception as e:
                 print('Error opening image:', filename)
                 raise
-
-        if not enhanced:
-            img = white_patch(img)
-            img = stretch_contrast(img, low_pct=1, high_pct=99)
+            img = enhance(img)
             img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
-            object_path = enhanced_filename.replace('https://storage.googleapis.com/chronomaps3-eu/', '')
-            to_save = img, object_path
 
         if record.get('workspace_title') and params.ADD_TITLE:
             img = ImageOps.expand(img, border=(0, 0, 0, 48), fill=params.BG_COLOR)  # Add a border around the image
