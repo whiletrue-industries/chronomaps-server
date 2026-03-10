@@ -19,6 +19,8 @@ else:
 
 from chronomaps_api import app as chronomaps_api_app
 from screenshot_handler import screenshot_handler as screenshot_handler_fn
+from screenshot_handler import replace_item_image as replace_item_image_fn
+from screenshot_handler import reanalyze_item as reanalyze_item_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
 from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_fn
 from complete_flow import complete_flow as complete_flow_fn
@@ -55,9 +57,33 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     print(f"Content type: {content_type}")
     automatic = req.args.get('automatic', 'false').lower() == 'true'
 
+    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type)
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
+def replace_image(req: https_fn.Request) -> https_fn.Response:
+    workspace = req.args.get('workspace')
+    api_key = req.args.get('api_key')
     item_id = req.args.get('item_id')
     item_key = req.args.get('item_key')
-    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type, item_id=item_id, item_key=item_key)
+    if not workspace or not api_key or not item_id or not item_key:
+        return https_fn.Response("Missing workspace, api_key, item_id or item_key", status=400)
+    image_file = req.files.get('image')
+    if not image_file:
+        return https_fn.Response("Missing image file", status=400)
+    image_bytes = image_file.read()
+    content_type = image_file.mimetype
+    return replace_item_image_fn(image_bytes=image_bytes, image_content_type=content_type, workspace=workspace, item_id=item_id, item_key=item_key, api_key=api_key)
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
+def reanalyze_item(req: https_fn.Request) -> https_fn.Response:
+    workspace = req.args.get('workspace')
+    api_key = req.args.get('api_key')
+    item_id = req.args.get('item_id')
+    item_key = req.args.get('item_key')
+    if not workspace or not api_key or not item_id or not item_key:
+        return https_fn.Response("Missing workspace, api_key, item_id or item_key", status=400)
+    automatic = req.args.get('automatic', 'false').lower() == 'true'
+    return reanalyze_item_fn(workspace=workspace, item_id=item_id, item_key=item_key, api_key=api_key, automatic=automatic)
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
 def complete_flow(req: https_fn.Request) -> https_fn.Response:

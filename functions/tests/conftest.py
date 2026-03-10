@@ -9,12 +9,14 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import os
 
-# Mock firebase_admin.firestore before any imports to avoid credential issues in CI
+# Mock firebase_admin.firestore and storage before any imports to avoid credential issues in CI
 _mock_firestore_client = Mock()
+_mock_storage = Mock()
+_mock_storage.bucket = Mock(return_value=MagicMock())
 
-# Patch firestore.client before firebase imports
 sys.modules['firebase_admin.firestore'] = Mock()
 sys.modules['firebase_admin.firestore'].client = Mock(return_value=_mock_firestore_client)
+sys.modules['firebase_admin.storage'] = _mock_storage
 
 import firebase_admin
 from firebase_admin import credentials

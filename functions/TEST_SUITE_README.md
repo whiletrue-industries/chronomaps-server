@@ -128,15 +128,15 @@ When an index is missing, the system now automatically attempts to create it via
 
 ### 5. Comprehensive Test Suite
 
-**Location:** `functions/test_chronomaps_api.py`
+**Location:** `functions/tests/`
 
 A comprehensive test suite covering all API endpoints and functionality.
 
-**Test Coverage:** 81% overall
-- `chronomaps_api/__init__.py`: 84% coverage
-- `chronomaps_api/resolve_firebase_user.py`: 50% coverage
+**Test Files:**
+- `tests/test_chronomaps_api.py` - Core API tests
+- `tests/test_screenshot_handler.py` - Screenshot handler and image API tests
 
-**Test Classes:**
+**Test Classes (test_chronomaps_api.py):**
 
 1. **TestHelperFunctions** (4 tests)
    - Key generation
@@ -159,10 +159,12 @@ A comprehensive test suite covering all API endpoints and functionality.
    - Public access
    - Invalid key rejection
 
-4. **TestWorkspaceEndpoints** (4 tests)
+4. **TestWorkspaceEndpoints** (5 tests)
    - Create workspace
+   - Create workspace preserves metadata
    - Get workspace metadata
    - Update workspace
+   - Update workspace settings only
    - Delete workspace
 
 5. **TestItemEndpoints** (4 tests)
@@ -187,7 +189,52 @@ A comprehensive test suite covering all API endpoints and functionality.
    - Authentication requirement
    - Aggregate with filters
 
-**Total:** 35 tests, all passing ✓
+**Test Classes (test_screenshot_handler.py):**
+
+9. **TestAnalyzeImage** (4 tests)
+   - Returns analysis record from GPT-4 Vision
+   - Automatic mode
+   - Automatic mode with existing metadata context
+   - Handles empty GPT response
+
+10. **TestUploadImage** (2 tests)
+    - Uploads to Firebase Storage and returns URL
+    - Handles different content types (PNG, JPEG)
+
+11. **TestFetchItem** (3 tests)
+    - Successful item fetch
+    - Error on 403 (unauthorized)
+    - Error on 404 (not found)
+
+12. **TestGetWorkspaceModeration** (3 tests)
+    - Returns moderation level
+    - Defaults to 3 when not set
+    - Error on API failure
+
+13. **TestDownloadItemImage** (2 tests)
+    - Downloads image from Storage
+    - Returns None when no image found
+
+14. **TestScreenshotHandler** (3 tests)
+    - Full flow: create new item
+    - Full flow: update existing item
+    - Error if item not found
+
+15. **TestReplaceItemImage** (4 tests)
+    - Replaces image successfully
+    - No OpenAI analysis performed
+    - Error if item not found
+    - Error if not authorized
+
+16. **TestReanalyzeItem** (6 tests)
+    - Re-analyzes successfully
+    - Preserves existing screenshot_url
+    - Automatic mode passes existing metadata
+    - Error if no image stored
+    - Error if item not found
+    - Updates item with new analysis
+
+**Total:** 64 tests, all passing
 
 ### 6. CI/CD Integration
 
@@ -207,10 +254,10 @@ Tests are now integrated into the CI/CD pipeline to ensure code quality before d
 
 ### 7. Testing Configuration
 
-**Files Added:**
+**Files:**
 - `functions/pytest.ini` - Pytest configuration
-- `functions/conftest.py` - Test fixtures and Firebase mocking setup
-- `functions/requirements.txt` - Updated with testing dependencies:
+- `functions/tests/conftest.py` - Test fixtures and Firebase mocking setup
+- `functions/requirements-test.txt` - Testing dependencies:
   - `pytest>=7.0.0`
   - `pytest-cov>=4.0.0`
   - `pytest-mock>=3.10.0`
@@ -221,14 +268,14 @@ Tests are now integrated into the CI/CD pipeline to ensure code quality before d
 
 ```bash
 cd functions
-python -m pytest test_chronomaps_api.py -v --cov=chronomaps_api
+python -m pytest tests/ -v --cov=chronomaps_api
 ```
 
 ### With Coverage Report
 
 ```bash
 cd functions
-python -m pytest test_chronomaps_api.py -v --cov=chronomaps_api --cov-report=html
+python -m pytest tests/ -v --cov=chronomaps_api --cov-report=html
 open htmlcov/index.html  # View coverage report in browser
 ```
 
@@ -236,14 +283,14 @@ open htmlcov/index.html  # View coverage report in browser
 
 ```bash
 cd functions
-python -m pytest test_chronomaps_api.py::TestFilteringAndSorting -v
+python -m pytest tests/test_chronomaps_api.py::TestFilteringAndSorting -v
 ```
 
 ### Run Specific Test
 
 ```bash
 cd functions
-python -m pytest test_chronomaps_api.py::TestFilteringAndSorting::test_apply_filters_equality -v
+python -m pytest tests/test_chronomaps_api.py::TestFilteringAndSorting::test_apply_filters_equality -v
 ```
 
 ## API Behavior Changes

@@ -465,28 +465,26 @@ DELETE /<workspace>/items
 ### Screenshot Analysis
 
 ```http
-POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>&item_id=<id>&item_key=<key>
+POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>
 ```
 
-**Authentication**: OPENAI_API_KEY and CHRONOMAPS_API_URL secrets required
+**Authentication**: Admin key, OR Collaborate key (when collaboration is enabled)
 
 **Content-Type**: multipart/form-data
 
 **Query Parameters**:
-- `workspace`: Workspace ID
-- `api_key`: Workspace admin or collaborate key
+- `workspace` (required): Workspace ID
+- `api_key` (required): Workspace admin or collaborate key
 - `automatic` (optional): Use automatic mode (true/false)
-- `item_id` (optional): Update existing item
-- `item_key` (optional): Item key for updates
 
 **Request Body**: Image file
 
-**Description**: Analyzes screenshot using GPT-4.1 Vision model to extract structured information including screenshot type, content, future scenario details, and more.
+**Description**: Analyzes screenshot using GPT-4.1 Vision model to extract structured information including screenshot type, content, future scenario details, and more. Always creates a new item. To update an existing item's image or re-analyze it, use the `replace_image` or `reanalyze_item` endpoints instead.
 
 **Response**:
 ```json
 {
-  "item_id": "generated-or-provided-item-id",
+  "item_id": "generated-item-id",
   "item_key": "uuid4",
   "metadata": {
     "screenshot_type": "news_article | fake_media | future_history_page | ...",
@@ -505,6 +503,71 @@ POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>&item_id=<
     "screenshot_url": "https://storage.googleapis.com/...",
     "created_at": "2025-01-15T10:30:00Z",
     "automatic": true
+  }
+}
+```
+
+---
+
+### Replace Item Image
+
+```http
+POST /replace_image?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>
+```
+
+**Authentication**: Admin key, OR Collaborate key + item-key
+
+**Content-Type**: multipart/form-data
+
+**Query Parameters**:
+- `workspace` (required): Workspace ID
+- `api_key` (required): Workspace admin or collaborate key
+- `item_id` (required): Item to replace the image for
+- `item_key` (required): Item key for authorization
+
+**Request Body**: Image file (field name: `image`)
+
+**Description**: Replaces an existing item's screenshot image without triggering re-analysis. Useful for correcting or updating an image while preserving all existing metadata and analysis results.
+
+**Response**:
+```json
+{
+  "item_id": "item-id",
+  "screenshot_url": "https://storage.googleapis.com/..."
+}
+```
+
+---
+
+### Re-analyze Item
+
+```http
+POST /reanalyze_item?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>&automatic=<bool>
+```
+
+**Authentication**: Admin key, OR Collaborate key + item-key
+
+**Query Parameters**:
+- `workspace` (required): Workspace ID
+- `api_key` (required): Workspace admin or collaborate key
+- `item_id` (required): Item to re-analyze
+- `item_key` (required): Item key for authorization
+- `automatic` (optional, default: false): Use automatic analysis mode. When true, existing metadata is passed to the AI as context.
+
+**Description**: Re-runs GPT-4.1 Vision analysis on an existing item using its stored image from Firebase Storage. Does not upload a new image. The item's metadata is replaced with new analysis results while preserving the existing `screenshot_url`. Useful for re-processing items after prompt improvements or when analysis quality needs improvement.
+
+**Response**:
+```json
+{
+  "item_id": "item-id",
+  "automatic": false,
+  "metadata": {
+    "screenshot_type": "news_article",
+    "content": "Re-analyzed content...",
+    "content_title": "Updated Title",
+    "screenshot_url": "https://storage.googleapis.com/...",
+    "created_at": "2025-01-15T10:30:00Z",
+    ...
   }
 }
 ```
@@ -831,6 +894,24 @@ curl -X POST "https://region-project.cloudfunctions.net/screenshot_handler?works
 # 3. Get all items
 curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?page=0&page_size=20" \
   -H "Authorization: KEY123"
+```
+
+### Replacing an Item's Image
+
+```bash
+# Replace screenshot without re-analysis
+curl -X POST "https://region-project.cloudfunctions.net/replace_image?workspace=abc123&api_key=KEY123&item_id=ITEM_ID&item_key=ITEM_KEY" \
+  -F "image=@new-screenshot.png"
+```
+
+### Re-analyzing an Item
+
+```bash
+# Re-run analysis on existing item using its stored image
+curl -X POST "https://region-project.cloudfunctions.net/reanalyze_item?workspace=abc123&api_key=KEY123&item_id=ITEM_ID&item_key=ITEM_KEY"
+
+# Re-analyze in automatic mode (preserves existing metadata as context)
+curl -X POST "https://region-project.cloudfunctions.net/reanalyze_item?workspace=abc123&api_key=KEY123&item_id=ITEM_ID&item_key=ITEM_KEY&automatic=true"
 ```
 
 ### Filtering Items

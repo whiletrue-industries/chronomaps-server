@@ -35,7 +35,7 @@ jobs:
     - name: Run tests with pytest
       run: |
         cd functions
-        pytest test_chronomaps_api.py -v --cov=chronomaps_api --cov-report=term-missing --cov-report=xml
+        pytest tests/ -v --cov=chronomaps_api --cov-report=term-missing --cov-report=xml
 
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
