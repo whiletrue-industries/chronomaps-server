@@ -23,6 +23,8 @@ from screenshot_handler import replace_item_image as replace_item_image_fn
 from screenshot_handler import reanalyze_item as reanalyze_item_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
 from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_fn
+from enhance_image import enhance_image as enhance_image_fn
+from enhance_image import enhance_all_images as enhance_all_images_fn
 from complete_flow import complete_flow as complete_flow_fn
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
@@ -131,6 +133,19 @@ def item_ingress_agent(req: https_fn.Request) -> https_fn.Response:
         # Return the result as a JSON response
         return dict(status='ok')
 
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
+def enhance_image(req: https_fn.Request) -> https_fn.Response:
+    screenshot_path = req.args.get('path')
+    screenshot_url = req.args.get('url')
+    side = req.args.get('side', 1000, type=int)
+    thumbnail_size = req.args.get('thumbnail_size', 200, type=int)
+    if not screenshot_path and not screenshot_url:
+        return https_fn.Response("Missing path or url parameter", status=400)
+    result = enhance_image_fn(screenshot_path=screenshot_path, screenshot_url=screenshot_url, side=side, thumbnail_size=thumbnail_size)
+    if isinstance(result, tuple):
+        return json.dumps(result[0]), result[1]
+    return json.dumps(result)
+
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.GB_8)
 def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
@@ -148,6 +163,23 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
+
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every day 03:00", secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_1, timeout_sec=540)
+def enhance_all_daily(event: scheduler_fn.ScheduledEvent) -> None:
+    print("STARTING daily enhancement backfill")
+    for bit in enhance_all_images_fn():
+        print(json.dumps(bit, ensure_ascii=False))
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_1, timeout_sec=540)
+def enhance_all(req: https_fn.Request) -> https_fn.Response:
+    side = req.args.get('side', 1000, type=int)
+    thumbnail_size = req.args.get('thumbnail_size', 200, type=int)
+    start = time.time()
+    def generate():
+        for bit in enhance_all_images_fn(side=side, thumbnail_size=thumbnail_size):
+            delta = int(time.time() - start)
+            yield f"data: {json.dumps([delta, bit], ensure_ascii=False)}\n\n"
+    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every 15 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
