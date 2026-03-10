@@ -86,6 +86,39 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: null
+  replace_image:
+    availableMemoryMb: 512
+    concurrency: null
+    entryPoint: replace_image
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: CHRONOMAPS_API_URL
+    serviceAccountEmail: null
+    timeoutSeconds: null
+  reanalyze_item:
+    availableMemoryMb: 512
+    concurrency: null
+    entryPoint: reanalyze_item
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: CHRONOMAPS_API_URL
+    serviceAccountEmail: null
+    timeoutSeconds: null
   complete_flow:
     availableMemoryMb: 512
     concurrency: null
@@ -102,10 +135,64 @@ endpoints:
     - key: CHRONOMAPS_API_URL
     serviceAccountEmail: null
     timeoutSeconds: null
+  enhance_image:
+    availableMemoryMb: 512
+    concurrency: null
+    entryPoint: enhance_image
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
+    serviceAccountEmail: null
+    timeoutSeconds: null
+  enhance_all:
+    availableMemoryMb: 1024
+    concurrency: null
+    entryPoint: enhance_all
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
+    serviceAccountEmail: null
+    timeoutSeconds: 540
+  enhance_all_daily:
+    availableMemoryMb: 1024
+    concurrency: null
+    entryPoint: enhance_all_daily
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west1
+    scheduleTrigger:
+      retryConfig: {}
+      schedule: every day 03:00
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
+    serviceAccountEmail: null
+    timeoutSeconds: 540
 params:
 - name: OPENAI_API_KEY
   type: secret
 - name: CHRONOMAPS_API_URL
+  type: secret
+- name: SERVICE_ACCOUNT_JSON
+  type: secret
+- name: CONFIG__ITS_TIME
   type: secret
 requiredAPIs:
 - api: cloudscheduler.googleapis.com
