@@ -465,10 +465,10 @@ DELETE /<workspace>/items
 ### Screenshot Analysis
 
 ```http
-POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>&item_id=<id>&item_key=<key>
+POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>
 ```
 
-**Authentication**: Admin key (for creating new items or updating any item), OR Collaborate key + item-key (for updating an existing item when collaboration is enabled)
+**Authentication**: Admin key, OR Collaborate key (when collaboration is enabled)
 
 **Content-Type**: multipart/form-data
 
@@ -476,17 +476,15 @@ POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>&item_id=<
 - `workspace` (required): Workspace ID
 - `api_key` (required): Workspace admin or collaborate key
 - `automatic` (optional): Use automatic mode (true/false)
-- `item_id` (optional): Update existing item instead of creating a new one
-- `item_key` (optional): Item key for authorization when updating
 
 **Request Body**: Image file
 
-**Description**: Analyzes screenshot using GPT-4.1 Vision model to extract structured information including screenshot type, content, future scenario details, and more.
+**Description**: Analyzes screenshot using GPT-4.1 Vision model to extract structured information including screenshot type, content, future scenario details, and more. Always creates a new item. To update an existing item's image or re-analyze it, use the `replace_image` or `reanalyze_item` endpoints instead.
 
 **Response**:
 ```json
 {
-  "item_id": "generated-or-provided-item-id",
+  "item_id": "generated-item-id",
   "item_key": "uuid4",
   "metadata": {
     "screenshot_type": "news_article | fake_media | future_history_page | ...",

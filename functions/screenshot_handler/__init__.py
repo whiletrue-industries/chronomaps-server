@@ -187,34 +187,21 @@ def download_item_image(workspace, item_id):
     return image_bytes, content_type
 
 
-def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', item_id=None, item_key=None):
-    """Full flow: analyze image, create/update item, upload image."""
-    existing_metadata = None
-    if item_id and item_key:
-        result = fetch_item(workspace, item_id, item_key, api_key)
-        if result[1] is not None:
-            return result
-        item_data = result[0]
-        existing_metadata = item_data.get('metadata', {}) if automatic else None
-
-    record = analyze_image(image_bytes, image_content_type, automatic=automatic, existing_metadata=existing_metadata)
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg'):
+    """Full flow: analyze image, create new item, upload image."""
+    record = analyze_image(image_bytes, image_content_type, automatic=automatic)
 
     moderation_result = get_workspace_moderation(workspace, api_key)
     if isinstance(moderation_result[0], dict) and 'error' in moderation_result[0]:
         return moderation_result
     record[f'{PRIVATE_KEY}moderation'] = moderation_result[0]
 
-    if item_id and item_key:
-        err = update_item(workspace, item_id, item_key, api_key, record)
-        if err:
-            return err
-    else:
-        result = create_item(workspace, api_key, record)
-        if result[1] is not None:
-            return result
-        item_data = result[0]
-        item_id = item_data['item_id']
-        item_key = item_data['item_key']
+    result = create_item(workspace, api_key, record)
+    if result[1] is not None:
+        return result
+    item_data = result[0]
+    item_id = item_data['item_id']
+    item_key = item_data['item_key']
 
     screenshot_url = upload_image(image_bytes, image_content_type, workspace, item_id)
 

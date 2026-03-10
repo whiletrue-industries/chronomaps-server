@@ -254,25 +254,7 @@ class TestScreenshotHandler:
         # Should have uploaded image
         mock_storage.blob.assert_called()
 
-    def test_update_existing_item(self, mock_openai, mock_api_requests, mock_storage):
-        from screenshot_handler import screenshot_handler
-
-        result = screenshot_handler(
-            image_bytes=SAMPLE_IMAGE,
-            workspace="ws",
-            api_key="key",
-            image_content_type="image/jpeg",
-            item_id="existing-id",
-            item_key="existing-key",
-        )
-
-        assert result["item_id"] == "existing-id"
-        assert "metadata" in result
-        # Should have called PUT (update), not POST (create)
-        mock_api_requests.post.assert_not_called()
-        assert mock_api_requests.put.call_count >= 1
-
-    def test_returns_error_if_item_not_found(self, mock_openai, mock_api_requests, mock_storage):
+    def test_returns_error_if_workspace_not_found(self, mock_openai, mock_api_requests, mock_storage):
         from screenshot_handler import screenshot_handler
 
         mock_api_requests.get.return_value.status_code = 404
@@ -280,8 +262,6 @@ class TestScreenshotHandler:
             image_bytes=SAMPLE_IMAGE,
             workspace="ws",
             api_key="key",
-            item_id="missing",
-            item_key="key",
         )
 
         assert result[1] == 404
