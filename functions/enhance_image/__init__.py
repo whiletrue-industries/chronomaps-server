@@ -82,14 +82,38 @@ def _enhanced_path(object_path: str, side: int = 1000) -> str:
     return object_path.replace('.jpeg', f'.enhanced{side_ext}.jpeg')
 
 
-def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side: int = 1000):
-    """Enhance a screenshot image if not already enhanced.
+def _thumbnail_path(object_path: str, size: int = 200) -> str:
+    """Derive the thumbnail image object path from an original path."""
+    size_ext = '' if size == 200 else f'.{size}'
+    return object_path.replace('.jpeg', f'.thumbnail{size_ext}.jpeg')
+
+
+def _create_thumbnail(img: Image.Image, size: int = 200) -> Image.Image:
+    """Create a thumbnail from an image, preserving aspect ratio."""
+    thumb = img.copy()
+    thumb.thumbnail((size, size), Image.Resampling.LANCZOS)
+    return thumb
+
+
+def _upload_image(blob, img: Image.Image, quality: int = 90):
+    """Save a PIL image to a storage blob as JPEG."""
+    buff = BytesIO()
+    img.save(buff, format='jpeg', quality=quality, optimize=True, progressive=True)
+    buff.seek(0)
+    blob.upload_from_file(buff, content_type='image/jpeg')
+    blob.make_public()
+
+
+def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side: int = 1000, thumbnail_size: int = 200):
+    """Enhance a screenshot image and create a thumbnail.
 
     Accepts either a storage object path or a full URL. Checks if the
     enhanced version exists; if not, downloads the original, enhances it,
-    and uploads the enhanced version.
+    and uploads the enhanced version. Also creates a thumbnail from the
+    enhanced image if one doesn't exist yet.
 
-    Returns dict with enhanced_url, enhanced_path, and already_existed flag.
+    Returns dict with enhanced_url, enhanced_path, thumbnail_url,
+    thumbnail_path, and already_existed flag.
     """
     if not screenshot_path and not screenshot_url:
         return dict(error='Either screenshot_path or screenshot_url is required'), 400
@@ -103,37 +127,44 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
         object_path = screenshot_path
 
     enhanced_object_path = _enhanced_path(object_path, side)
+    thumb_object_path = _thumbnail_path(object_path, thumbnail_size)
 
     # Check if enhanced version already exists
     enhanced_blob = bucket.blob(enhanced_object_path)
-    if enhanced_blob.exists():
+    enhanced_existed = enhanced_blob.exists()
+
+    if enhanced_existed:
         enhanced_blob.make_public()
-        return dict(
-            enhanced_url=enhanced_blob.public_url,
-            enhanced_path=enhanced_object_path,
-            already_existed=True,
-        )
+        enhanced_img = None
+    else:
+        # Download original
+        original_blob = bucket.blob(object_path)
+        if not original_blob.exists():
+            return dict(error=f'Original image not found: {object_path}'), 404
 
-    # Download original
-    original_blob = bucket.blob(object_path)
-    if not original_blob.exists():
-        return dict(error=f'Original image not found: {object_path}'), 404
+        image_bytes = original_blob.download_as_bytes()
+        img = Image.open(BytesIO(image_bytes))
 
-    image_bytes = original_blob.download_as_bytes()
-    img = Image.open(BytesIO(image_bytes))
+        # Enhance and upload
+        enhanced_img = enhance(img)
+        _upload_image(enhanced_blob, enhanced_img)
 
-    # Enhance
-    img = enhance(img)
-
-    # Upload enhanced
-    buff = BytesIO()
-    img.save(buff, format='jpeg', quality=90, optimize=True, progressive=True)
-    buff.seek(0)
-    enhanced_blob.upload_from_file(buff, content_type='image/jpeg')
-    enhanced_blob.make_public()
+    # Create thumbnail from enhanced image if it doesn't exist
+    thumb_blob = bucket.blob(thumb_object_path)
+    if not thumb_blob.exists():
+        if enhanced_img is None:
+            # Need to download the enhanced image to create thumbnail
+            enhanced_bytes = enhanced_blob.download_as_bytes()
+            enhanced_img = Image.open(BytesIO(enhanced_bytes))
+        thumb = _create_thumbnail(enhanced_img, thumbnail_size)
+        _upload_image(thumb_blob, thumb, quality=85)
+    else:
+        thumb_blob.make_public()
 
     return dict(
         enhanced_url=enhanced_blob.public_url,
         enhanced_path=enhanced_object_path,
-        already_existed=False,
+        thumbnail_url=thumb_blob.public_url,
+        thumbnail_path=thumb_object_path,
+        already_existed=enhanced_existed,
     )

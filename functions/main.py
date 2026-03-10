@@ -137,9 +137,10 @@ def enhance_image(req: https_fn.Request) -> https_fn.Response:
     screenshot_path = req.args.get('path')
     screenshot_url = req.args.get('url')
     side = req.args.get('side', 1000, type=int)
+    thumbnail_size = req.args.get('thumbnail_size', 200, type=int)
     if not screenshot_path and not screenshot_url:
         return https_fn.Response("Missing path or url parameter", status=400)
-    result = enhance_image_fn(screenshot_path=screenshot_path, screenshot_url=screenshot_url, side=side)
+    result = enhance_image_fn(screenshot_path=screenshot_path, screenshot_url=screenshot_url, side=side, thumbnail_size=thumbnail_size)
     if isinstance(result, tuple):
         return json.dumps(result[0]), result[1]
     return json.dumps(result)

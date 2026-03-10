@@ -90,6 +90,46 @@ class TestEnhancedPath:
         assert _enhanced_path("ws/item/screenshot.jpeg", side=1000) == "ws/item/screenshot.enhanced.jpeg"
 
 
+class TestThumbnailPath:
+    def test_default_size(self):
+        from enhance_image import _thumbnail_path
+
+        assert _thumbnail_path("ws/item/screenshot.jpeg") == "ws/item/screenshot.thumbnail.jpeg"
+
+    def test_custom_size(self):
+        from enhance_image import _thumbnail_path
+
+        assert _thumbnail_path("ws/item/screenshot.jpeg", size=300) == "ws/item/screenshot.thumbnail.300.jpeg"
+
+    def test_size_200_no_extension(self):
+        from enhance_image import _thumbnail_path
+
+        assert _thumbnail_path("ws/item/screenshot.jpeg", size=200) == "ws/item/screenshot.thumbnail.jpeg"
+
+
+class TestCreateThumbnail:
+    def test_respects_max_size(self):
+        from enhance_image import _create_thumbnail
+
+        img = Image.new("RGB", (400, 800), (100, 100, 100))
+        thumb = _create_thumbnail(img, size=200)
+        assert max(thumb.size) == 200
+
+    def test_preserves_aspect_ratio(self):
+        from enhance_image import _create_thumbnail
+
+        img = Image.new("RGB", (400, 200), (100, 100, 100))
+        thumb = _create_thumbnail(img, size=100)
+        assert thumb.size == (100, 50)
+
+    def test_does_not_upscale(self):
+        from enhance_image import _create_thumbnail
+
+        img = Image.new("RGB", (50, 30), (100, 100, 100))
+        thumb = _create_thumbnail(img, size=200)
+        assert thumb.size == (50, 30)
+
+
 class TestEnhance:
     def test_returns_rgb_image(self):
         from enhance_image import enhance
@@ -136,6 +176,13 @@ class TestWhitePatch:
         assert arr.max() == 255
 
 
+def _make_blob(exists=True, public_url="https://example.com/blob"):
+    blob = MagicMock()
+    blob.exists.return_value = exists
+    blob.public_url = public_url
+    return blob
+
+
 class TestEnhanceImage:
     def test_missing_params_returns_400(self):
         from enhance_image import enhance_image
@@ -153,50 +200,64 @@ class TestEnhanceImage:
         assert result[1] == 400
         assert "does not match" in result[0]["error"]
 
-    def test_returns_existing_enhanced(self, mock_storage):
+    def test_returns_existing_enhanced_and_thumbnail(self, mock_storage):
         from enhance_image import enhance_image
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = True
-        enhanced_blob.public_url = "https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg"
-        mock_storage.blob.return_value = enhanced_blob
+        enhanced_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg")
+        thumb_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.thumbnail.jpeg")
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
 
         result = enhance_image(screenshot_path="ws/item/screenshot.jpeg")
 
         assert not isinstance(result, tuple)
         assert result["already_existed"] is True
         assert result["enhanced_url"] == enhanced_blob.public_url
+        assert result["thumbnail_url"] == thumb_blob.public_url
 
-    def test_enhances_and_uploads_when_not_existing(self, mock_storage):
+    def test_enhances_and_creates_thumbnail_when_not_existing(self, mock_storage):
         from enhance_image import enhance_image
 
         jpeg_bytes = _make_jpeg_bytes()
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = False
-
-        original_blob = MagicMock()
-        original_blob.exists.return_value = True
+        enhanced_blob = _make_blob(exists=False)
+        original_blob = _make_blob(exists=True)
         original_blob.download_as_bytes.return_value = jpeg_bytes
+        thumb_blob = _make_blob(exists=False)
 
-        # First call to bucket.blob is for enhanced, second for original
-        mock_storage.blob.side_effect = [enhanced_blob, original_blob]
+        mock_storage.blob.side_effect = [enhanced_blob, original_blob, thumb_blob]
 
         result = enhance_image(screenshot_path="ws/item/screenshot.jpeg")
 
         assert not isinstance(result, tuple)
         assert result["already_existed"] is False
         enhanced_blob.upload_from_file.assert_called_once()
-        enhanced_blob.make_public.assert_called_once()
+        thumb_blob.upload_from_file.assert_called_once()
+        assert "thumbnail_url" in result
+        assert "thumbnail_path" in result
+
+    def test_creates_thumbnail_when_enhanced_exists_but_thumbnail_missing(self, mock_storage):
+        from enhance_image import enhance_image
+
+        jpeg_bytes = _make_jpeg_bytes()
+
+        enhanced_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg")
+        enhanced_blob.download_as_bytes.return_value = jpeg_bytes
+        thumb_blob = _make_blob(exists=False)
+
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
+
+        result = enhance_image(screenshot_path="ws/item/screenshot.jpeg")
+
+        assert result["already_existed"] is True
+        # Should have downloaded enhanced to create thumbnail
+        enhanced_blob.download_as_bytes.assert_called_once()
+        thumb_blob.upload_from_file.assert_called_once()
 
     def test_original_not_found_returns_404(self, mock_storage):
         from enhance_image import enhance_image
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = False
-
-        original_blob = MagicMock()
-        original_blob.exists.return_value = False
+        enhanced_blob = _make_blob(exists=False)
+        original_blob = _make_blob(exists=False)
 
         mock_storage.blob.side_effect = [enhanced_blob, original_blob]
 
@@ -208,38 +269,51 @@ class TestEnhanceImage:
     def test_with_url_parameter(self, mock_storage):
         from enhance_image import enhance_image
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = True
-        enhanced_blob.public_url = "https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg"
-        mock_storage.blob.return_value = enhanced_blob
+        enhanced_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg")
+        thumb_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.thumbnail.jpeg")
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
 
         result = enhance_image(screenshot_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.jpeg")
 
         assert result["already_existed"] is True
-        mock_storage.blob.assert_called_with("ws/item/screenshot.enhanced.jpeg")
+        blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
+        assert "ws/item/screenshot.enhanced.jpeg" in blob_calls
+        assert "ws/item/screenshot.thumbnail.jpeg" in blob_calls
 
     def test_with_custom_side(self, mock_storage):
         from enhance_image import enhance_image
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = True
-        enhanced_blob.public_url = "https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.1600.jpeg"
-        mock_storage.blob.return_value = enhanced_blob
+        enhanced_blob = _make_blob(exists=True)
+        thumb_blob = _make_blob(exists=True)
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
 
         result = enhance_image(screenshot_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.jpeg", side=1600)
 
         assert result["already_existed"] is True
-        mock_storage.blob.assert_called_with("ws/item/screenshot.enhanced.1600.jpeg")
+        blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
+        assert "ws/item/screenshot.enhanced.1600.jpeg" in blob_calls
+
+    def test_with_custom_thumbnail_size(self, mock_storage):
+        from enhance_image import enhance_image
+
+        enhanced_blob = _make_blob(exists=True)
+        thumb_blob = _make_blob(exists=True)
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
+
+        result = enhance_image(screenshot_path="ws/item/screenshot.jpeg", thumbnail_size=300)
+
+        blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
+        assert "ws/item/screenshot.thumbnail.300.jpeg" in blob_calls
 
     def test_with_legacy_url(self, mock_storage):
         from enhance_image import enhance_image
 
-        enhanced_blob = MagicMock()
-        enhanced_blob.exists.return_value = True
-        enhanced_blob.public_url = "https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg"
-        mock_storage.blob.return_value = enhanced_blob
+        enhanced_blob = _make_blob(exists=True)
+        thumb_blob = _make_blob(exists=True)
+        mock_storage.blob.side_effect = [enhanced_blob, thumb_blob]
 
         result = enhance_image(screenshot_url="https://storage.googleapis.com/chronomaps3.firebasestorage.app/ws/item/screenshot.jpeg")
 
         assert result["already_existed"] is True
-        mock_storage.blob.assert_called_with("ws/item/screenshot.enhanced.jpeg")
+        blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
+        assert "ws/item/screenshot.enhanced.jpeg" in blob_calls
