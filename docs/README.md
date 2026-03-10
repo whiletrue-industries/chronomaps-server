@@ -22,6 +22,7 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 - Multi-tenant workspace architecture
 - Fine-grained access control (5-level privilege system)
 - AI-powered screenshot analysis using GPT-4.1 Vision
+- Modular image operations (replace image, re-analyze item)
 - Interactive chat agent for guided item completion
 - ML clustering (t-SNE + Agglomerative Clustering)
 - Map tile generation for visualization
