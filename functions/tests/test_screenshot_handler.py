@@ -379,17 +379,20 @@ class TestReanalyzeItem:
         blob = mock_storage.blob.return_value
         blob.upload_from_string.assert_not_called()
 
-    def test_preserves_screenshot_url(self, mock_openai, mock_api_requests, mock_storage):
+    def test_does_not_update_screenshot_url(self, mock_openai, mock_api_requests, mock_storage):
         from screenshot_handler import reanalyze_item
 
-        result = reanalyze_item(
+        reanalyze_item(
             workspace="ws",
             item_id="item-1",
             item_key="key-1",
             api_key="api-key",
         )
 
-        assert result["metadata"]["screenshot_url"] == "https://storage.googleapis.com/old-screenshot.jpeg"
+        # The update should only contain analysis fields, not screenshot_url
+        put_call = mock_api_requests.put.call_args
+        updated_record = put_call[1]["json"]
+        assert "screenshot_url" not in updated_record
 
     def test_automatic_mode_passes_existing_metadata(self, mock_openai, mock_api_requests, mock_storage):
         from screenshot_handler import reanalyze_item

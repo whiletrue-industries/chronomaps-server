@@ -1,8 +1,6 @@
 import datetime
-from firebase_admin import firestore
 from openai import OpenAI
 from firebase_admin import storage
-from firebase_functions.params import SecretParam
 from pathlib import Path
 from config import OPENAI_KEY, CHRONOMAPS_API_URL, BUCKET_NAME, PRIVATE_KEY
 import os
@@ -266,16 +264,6 @@ def reanalyze_item(workspace, item_id, item_key, api_key, automatic=False):
 
     existing_metadata = item_data.get('metadata', {}) if automatic else None
     record = analyze_image(image_bytes, image_content_type, automatic=automatic, existing_metadata=existing_metadata)
-
-    moderation_result = get_workspace_moderation(workspace, api_key)
-    if isinstance(moderation_result[0], dict) and 'error' in moderation_result[0]:
-        return moderation_result
-    record[f'{PRIVATE_KEY}moderation'] = moderation_result[0]
-
-    # Preserve the existing screenshot_url
-    screenshot_url = item_data.get('screenshot_url')
-    if screenshot_url:
-        record['screenshot_url'] = screenshot_url
 
     err = update_item(workspace, item_id, item_key, api_key, record)
     if err:
