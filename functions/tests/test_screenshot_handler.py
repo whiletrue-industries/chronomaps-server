@@ -29,6 +29,18 @@ def mock_storage(monkeypatch):
         yield mock_bucket
 
 
+@pytest.fixture(autouse=True)
+def mock_enhance_image():
+    """Mock enhance_image_fn used by screenshot_handler."""
+    with patch("screenshot_handler.enhance_image_fn") as mock_enhance:
+        mock_enhance.return_value = dict(
+            enhanced_url="https://storage.googleapis.com/chronomaps3-eu/test/screenshot.enhanced.jpeg",
+            enhanced_path="test/screenshot.enhanced.jpeg",
+            already_existed=False,
+        )
+        yield mock_enhance
+
+
 @pytest.fixture
 def mock_openai():
     """Mock the OpenAI client used for image analysis."""
@@ -254,6 +266,20 @@ class TestScreenshotHandler:
         # Should have uploaded image
         mock_storage.blob.assert_called()
 
+    def test_triggers_enhancement(self, mock_openai, mock_api_requests, mock_storage, mock_enhance_image):
+        from screenshot_handler import screenshot_handler
+
+        screenshot_handler(
+            image_bytes=SAMPLE_IMAGE,
+            workspace="ws",
+            api_key="key",
+            image_content_type="image/jpeg",
+        )
+
+        mock_enhance_image.assert_called_once()
+        call_kwargs = mock_enhance_image.call_args[1]
+        assert "screenshot_url" in call_kwargs
+
     def test_returns_error_if_workspace_not_found(self, mock_openai, mock_api_requests, mock_storage):
         from screenshot_handler import screenshot_handler
 
@@ -290,6 +316,22 @@ class TestReplaceItemImage:
         blob.upload_from_string.assert_called_once()
         # Should update the item with the new URL
         mock_api_requests.put.assert_called_once()
+
+    def test_triggers_enhancement(self, mock_api_requests, mock_storage, mock_enhance_image):
+        from screenshot_handler import replace_item_image
+
+        replace_item_image(
+            image_bytes=SAMPLE_IMAGE,
+            image_content_type="image/jpeg",
+            workspace="ws",
+            item_id="item-1",
+            item_key="key-1",
+            api_key="api-key",
+        )
+
+        mock_enhance_image.assert_called_once()
+        call_kwargs = mock_enhance_image.call_args[1]
+        assert "screenshot_url" in call_kwargs
 
     def test_no_analysis_performed(self, mock_api_requests, mock_storage):
         """Verify that no OpenAI calls are made."""

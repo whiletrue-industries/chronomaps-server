@@ -3,6 +3,7 @@ from openai import OpenAI
 from firebase_admin import storage
 from pathlib import Path
 from config import OPENAI_KEY, CHRONOMAPS_API_URL, BUCKET_NAME, PRIVATE_KEY
+from enhance_image import enhance_image as enhance_image_fn
 import os
 import base64
 import json
@@ -205,6 +206,11 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
 
     screenshot_url = upload_image(image_bytes, image_content_type, workspace, item_id)
 
+    # Pre-generate enhanced version for faster TSNE processing later
+    enhanced_result = enhance_image_fn(screenshot_url=screenshot_url)
+    if isinstance(enhanced_result, tuple):
+        print('WARNING: failed to enhance image:', enhanced_result[0])
+
     record_ = {'screenshot_url': screenshot_url}
     err = update_item(workspace, item_id, item_key, api_key, record_)
     if err:
@@ -227,6 +233,11 @@ def replace_item_image(image_bytes, image_content_type, workspace, item_id, item
         return result
 
     screenshot_url = upload_image(image_bytes, image_content_type, workspace, item_id)
+
+    # Pre-generate enhanced version for faster TSNE processing later
+    enhanced_result = enhance_image_fn(screenshot_url=screenshot_url)
+    if isinstance(enhanced_result, tuple):
+        print('WARNING: failed to enhance image:', enhanced_result[0])
 
     err = update_item(workspace, item_id, item_key, api_key, {'screenshot_url': screenshot_url})
     if err:
