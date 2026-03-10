@@ -317,3 +317,110 @@ class TestEnhanceImage:
         assert result["already_existed"] is True
         blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
         assert "ws/item/screenshot.enhanced.jpeg" in blob_calls
+
+
+class TestOriginalPattern:
+    def test_matches_original_screenshot(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert _ORIGINAL_PATTERN.match("workspace/item123/screenshot.jpeg")
+
+    def test_rejects_enhanced(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert not _ORIGINAL_PATTERN.match("workspace/item123/screenshot.enhanced.jpeg")
+        assert not _ORIGINAL_PATTERN.match("workspace/item123/screenshot.enhanced.1600.jpeg")
+
+    def test_rejects_thumbnail(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert not _ORIGINAL_PATTERN.match("workspace/item123/screenshot.thumbnail.jpeg")
+        assert not _ORIGINAL_PATTERN.match("workspace/item123/screenshot.thumbnail.300.jpeg")
+
+    def test_rejects_tiles(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert not _ORIGINAL_PATTERN.match("tiles/jma25/0/config.json")
+        assert not _ORIGINAL_PATTERN.match("tiles/jma25/0/8/0/0.png")
+
+    def test_rejects_non_jpeg(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert not _ORIGINAL_PATTERN.match("workspace/item123/screenshot.png")
+
+    def test_rejects_deeply_nested(self):
+        from enhance_image import _ORIGINAL_PATTERN
+
+        assert not _ORIGINAL_PATTERN.match("a/b/c/screenshot.jpeg")
+
+
+class TestEnhanceAllImages:
+    def test_processes_original_screenshots(self, mock_storage):
+        from enhance_image import enhance_all_images
+
+        jpeg_bytes = _make_jpeg_bytes()
+
+        # Simulate list_blobs returning a mix of originals and non-originals
+        blob1 = MagicMock()
+        blob1.name = "ws1/item1/screenshot.jpeg"
+        blob2 = MagicMock()
+        blob2.name = "ws1/item1/screenshot.enhanced.jpeg"  # should be skipped
+        blob3 = MagicMock()
+        blob3.name = "ws2/item2/screenshot.jpeg"
+        blob4 = MagicMock()
+        blob4.name = "tiles/jma25/config.json"  # should be skipped
+        mock_storage.list_blobs.return_value = [blob1, blob2, blob3, blob4]
+
+        # Mock bucket.blob for enhance_image calls
+        # Each enhance_image call needs: enhanced_blob, original_blob, thumb_blob
+        def make_enhance_blobs():
+            enhanced = _make_blob(exists=False)
+            original = _make_blob(exists=True)
+            original.download_as_bytes.return_value = jpeg_bytes
+            thumb = _make_blob(exists=False)
+            return [enhanced, original, thumb]
+
+        mock_storage.blob.side_effect = make_enhance_blobs() + make_enhance_blobs()
+
+        messages = list(enhance_all_images())
+
+        # Should have processed 2 originals (blob1 and blob3)
+        final = messages[-1]
+        assert final["processed"] == 2
+        assert final["errors"] == 0
+
+    def test_handles_errors_gracefully(self, mock_storage):
+        from enhance_image import enhance_all_images
+
+        blob1 = MagicMock()
+        blob1.name = "ws1/item1/screenshot.jpeg"
+        mock_storage.list_blobs.return_value = [blob1]
+
+        # Make enhance_image fail: enhanced doesn't exist, original doesn't exist
+        enhanced = _make_blob(exists=False)
+        original = _make_blob(exists=False)
+        mock_storage.blob.side_effect = [enhanced, original]
+
+        messages = list(enhance_all_images())
+
+        final = messages[-1]
+        assert final["processed"] == 1
+        assert final["errors"] == 1
+
+    def test_skips_already_enhanced(self, mock_storage):
+        from enhance_image import enhance_all_images
+
+        blob1 = MagicMock()
+        blob1.name = "ws1/item1/screenshot.jpeg"
+        mock_storage.list_blobs.return_value = [blob1]
+
+        # Both enhanced and thumbnail already exist
+        enhanced = _make_blob(exists=True)
+        thumb = _make_blob(exists=True)
+        mock_storage.blob.side_effect = [enhanced, thumb]
+
+        messages = list(enhance_all_images())
+
+        final = messages[-1]
+        assert final["processed"] == 1
+        assert final["enhanced"] == 0
