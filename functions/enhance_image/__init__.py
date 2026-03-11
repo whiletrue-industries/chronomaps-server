@@ -197,7 +197,7 @@ def enhance_all_images(side: int = 1000, thumbnail_size: int = 200):
             else:
                 if not result['already_existed']:
                     enhanced_count += 1
-                yield dict(msg=f'Processed {path} (new={not result["already_existed"]})')
+                    yield dict(msg=f'Processed {path} (new={not result["already_existed"]})')
         except Exception as e:
             errors += 1
             yield dict(msg=f'Exception processing {path}: {e}')
