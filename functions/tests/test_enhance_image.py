@@ -366,10 +366,11 @@ class TestEnhanceAllImages:
         jpeg_bytes = _make_jpeg_bytes()
 
         # Simulate list_blobs returning a mix of originals and non-originals
+        # Neither original has enhanced/thumbnail variants in the listing
         blob1 = MagicMock()
         blob1.name = "ws1/item1/screenshot.jpeg"
         blob2 = MagicMock()
-        blob2.name = "ws1/item1/screenshot.enhanced.jpeg"  # should be skipped
+        blob2.name = "ws1/item1/screenshot.enhanced.jpeg"  # present but doesn't match original pattern
         blob3 = MagicMock()
         blob3.name = "ws2/item2/screenshot.jpeg"
         blob4 = MagicMock()
@@ -385,11 +386,13 @@ class TestEnhanceAllImages:
             thumb = _make_blob(exists=False)
             return [enhanced, original, thumb]
 
+        # blob1 has enhanced variant in listing, so only needs thumbnail
+        # blob3 needs both enhanced and thumbnail
         mock_storage.blob.side_effect = make_enhance_blobs() + make_enhance_blobs()
 
         messages = list(enhance_all_images())
 
-        # Should have processed 2 originals (blob1 and blob3)
+        # Should have processed 2 items needing work
         final = messages[-1]
         assert final["processed"] == 2
         assert final["errors"] == 0
@@ -397,6 +400,7 @@ class TestEnhanceAllImages:
     def test_handles_errors_gracefully(self, mock_storage):
         from enhance_image import enhance_all_images
 
+        # No enhanced or thumbnail variants in listing, so it needs work
         blob1 = MagicMock()
         blob1.name = "ws1/item1/screenshot.jpeg"
         mock_storage.list_blobs.return_value = [blob1]
@@ -415,17 +419,19 @@ class TestEnhanceAllImages:
     def test_skips_already_enhanced(self, mock_storage):
         from enhance_image import enhance_all_images
 
+        # Both enhanced and thumbnail variants present in listing
         blob1 = MagicMock()
         blob1.name = "ws1/item1/screenshot.jpeg"
-        mock_storage.list_blobs.return_value = [blob1]
+        blob2 = MagicMock()
+        blob2.name = "ws1/item1/screenshot.enhanced.jpeg"
+        blob3 = MagicMock()
+        blob3.name = "ws1/item1/screenshot.thumbnail.jpeg"
+        mock_storage.list_blobs.return_value = [blob1, blob2, blob3]
 
-        # Both enhanced and thumbnail already exist
-        enhanced = _make_blob(exists=True)
-        thumb = _make_blob(exists=True)
-        mock_storage.blob.side_effect = [enhanced, thumb]
-
+        # No blob() calls should be needed since everything is skipped
         messages = list(enhance_all_images())
 
         final = messages[-1]
-        assert final["processed"] == 1
+        assert final["processed"] == 0
+        assert final["skipped"] == 1
         assert final["enhanced"] == 0

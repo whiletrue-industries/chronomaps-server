@@ -177,18 +177,33 @@ def enhance_all_images(side: int = 1000, thumbnail_size: int = 200):
     """Iterate over all original screenshots in storage and ensure
     each has an enhanced version and a thumbnail.
 
+    Loads all blob names upfront to determine which images need
+    enhancement or thumbnails, avoiding per-image existence checks.
+
     Yields status dicts for each image processed.
     """
-    processed = 0
+    all_blob_names = set(blob.name for blob in bucket.list_blobs())
+
+    originals = [name for name in all_blob_names if _ORIGINAL_PATTERN.match(name)]
+
+    needs_work = []
+    for path in originals:
+        enhanced_path = _enhanced_path(path, side)
+        thumb_path = _thumbnail_path(path, thumbnail_size)
+        needs_enhance = enhanced_path not in all_blob_names
+        needs_thumb = thumb_path not in all_blob_names
+        if needs_enhance or needs_thumb:
+            needs_work.append((path, needs_enhance, needs_thumb))
+
+    skipped = len(originals) - len(needs_work)
+    yield dict(
+        msg=f'Found {len(originals)} originals, {len(needs_work)} need work, {skipped} already complete',
+    )
+
     enhanced_count = 0
     errors = 0
 
-    for blob in bucket.list_blobs():
-        path = blob.name
-        if not _ORIGINAL_PATTERN.match(path):
-            continue
-
-        processed += 1
+    for path, needs_enhance, needs_thumb in needs_work:
         try:
             result = enhance_image(screenshot_path=path, side=side, thumbnail_size=thumbnail_size)
             if isinstance(result, tuple):
@@ -197,14 +212,16 @@ def enhance_all_images(side: int = 1000, thumbnail_size: int = 200):
             else:
                 if not result['already_existed']:
                     enhanced_count += 1
-                    yield dict(msg=f'Processed {path} (new={not result["already_existed"]})')
+                yield dict(msg=f'Processed {path} (enhanced={needs_enhance}, thumb={needs_thumb})')
         except Exception as e:
             errors += 1
             yield dict(msg=f'Exception processing {path}: {e}')
 
     yield dict(
-        msg=f'Done. Processed: {processed}, newly enhanced: {enhanced_count}, errors: {errors}',
-        processed=processed,
+        msg=f'Done. Total originals: {len(originals)}, skipped: {skipped}, '
+            f'newly enhanced: {enhanced_count}, errors: {errors}',
+        processed=len(needs_work),
+        skipped=skipped,
         enhanced=enhanced_count,
         errors=errors,
     )
