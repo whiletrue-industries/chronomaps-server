@@ -180,7 +180,7 @@ endpoints:
     - europe-west1
     scheduleTrigger:
       retryConfig: {}
-      schedule: every day 03:00
+      schedule: every hour
     secretEnvironmentVariables:
     - key: SERVICE_ACCOUNT_JSON
     serviceAccountEmail: null
