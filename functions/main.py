@@ -30,7 +30,7 @@ from complete_flow import complete_flow as complete_flow_fn
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 
 # Expose Flask app as a single Cloud Function
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post", "get", "put", "delete"]), secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post", "get", "put", "delete"]), secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_1)
 def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
     # Pre-read body and cache it on the original request, then provide a fresh
     # stream to the nested Flask context. This prevents the functions-framework's

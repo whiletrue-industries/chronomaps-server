@@ -1,6 +1,6 @@
 endpoints:
   chronomaps_api:
-    availableMemoryMb: 512
+    availableMemoryMb: 1024
     concurrency: null
     entryPoint: chronomaps_api
     httpsTrigger: {}
