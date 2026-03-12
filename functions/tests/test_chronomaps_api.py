@@ -924,5 +924,164 @@ class TestAggregateEndpoint:
         assert data[1]["count"] == 1
 
 
+class TestAllItemsEndpoint:
+    """Test the /all-items endpoint."""
+
+    def _make_mock_collection(self, workspace_id, items, has_config=True):
+        """Helper to create a mock collection with config and items."""
+        collection = Mock()
+        collection.id = workspace_id
+
+        config_doc = Mock()
+        config_doc.exists = has_config
+
+        config_ref = Mock()
+        config_ref.get.return_value = config_doc
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return Mock()
+
+        collection.document.side_effect = mock_document
+        return collection
+
+    def test_get_all_items_basic(self, client, mock_db):
+        """Test basic all-items listing returns items from multiple workspaces."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "admin@example.com", "uid": "admin-uid"}
+
+            # Create mock collections for two workspaces
+            coll1 = self._make_mock_collection("ws1", [])
+            coll2 = self._make_mock_collection("ws2", [])
+
+            mock_db.collections.return_value = [coll1, coll2]
+
+            # Mock fetch_and_filter_items to return items per workspace
+            items_ws1 = [
+                {"id": "item1", "metadata": {"title": "Item 1", "created_at": "2025-01-01"}},
+                {"id": "item2", "metadata": {"title": "Item 2", "created_at": "2025-01-02"}},
+            ]
+            items_ws2 = [
+                {"id": "item3", "metadata": {"title": "Item 3", "created_at": "2025-01-03"}},
+            ]
+
+            def mock_fetch(workspace, filters=None, order_by=None):
+                if workspace == "ws1":
+                    return items_ws1, False, None
+                return items_ws2, False, None
+
+            with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
+                response = client.get(
+                    "/all-items",
+                    headers={"Authorization": "Bearer test-token"}
+                )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert len(data) == 3
+            # Each item should have _workspace field
+            workspaces = [item["_workspace"] for item in data]
+            assert "ws1" in workspaces
+            assert "ws2" in workspaces
+
+    def test_get_all_items_pagination(self, client, mock_db):
+        """Test pagination works across workspaces."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "admin@example.com", "uid": "admin-uid"}
+
+            coll1 = self._make_mock_collection("ws1", [])
+            mock_db.collections.return_value = [coll1]
+
+            items_ws1 = [
+                {"id": f"item{i}", "metadata": {"title": f"Item {i}", "created_at": f"2025-01-{i+1:02d}"}}
+                for i in range(5)
+            ]
+
+            def mock_fetch(workspace, filters=None, order_by=None):
+                return items_ws1, False, None
+
+            with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
+                # First page of 2
+                response = client.get(
+                    "/all-items?page=0&page_size=2",
+                    headers={"Authorization": "Bearer test-token"}
+                )
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert len(data) == 2
+
+                # Second page of 2
+                response = client.get(
+                    "/all-items?page=1&page_size=2",
+                    headers={"Authorization": "Bearer test-token"}
+                )
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert len(data) == 2
+
+                # Third page of 2 (only 1 remaining)
+                response = client.get(
+                    "/all-items?page=2&page_size=2",
+                    headers={"Authorization": "Bearer test-token"}
+                )
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert len(data) == 1
+
+    def test_get_all_items_with_filters(self, client, mock_db):
+        """Test filters are passed through to fetch_and_filter_items."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "admin@example.com", "uid": "admin-uid"}
+
+            coll1 = self._make_mock_collection("ws1", [])
+            mock_db.collections.return_value = [coll1]
+
+            captured_filters = []
+
+            def mock_fetch(workspace, filters=None, order_by=None):
+                captured_filters.append(filters)
+                return [], False, None
+
+            with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
+                response = client.get(
+                    '/all-items?filters=metadata.status%20%3D%3D%20"active"',
+                    headers={"Authorization": "Bearer test-token"}
+                )
+
+            assert response.status_code == 200
+            assert len(captured_filters) == 1
+            assert 'metadata.status == "active"' in captured_filters[0]
+
+    def test_get_all_items_requires_auth(self, client, mock_db):
+        """Test that /all-items requires Firebase auth."""
+        response = client.get("/all-items")
+        assert response.status_code == 401
+
+    def test_get_all_items_skips_collections_without_config(self, client, mock_db):
+        """Test that collections without .config are skipped."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "admin@example.com", "uid": "admin-uid"}
+
+            coll_with_config = self._make_mock_collection("ws1", [])
+            coll_without_config = self._make_mock_collection("ws2", [], has_config=False)
+            mock_db.collections.return_value = [coll_with_config, coll_without_config]
+
+            def mock_fetch(workspace, filters=None, order_by=None):
+                return [{"id": "item1", "metadata": {"title": "Item 1", "created_at": "2025-01-01"}}], False, None
+
+            with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
+                response = client.get(
+                    "/all-items",
+                    headers={"Authorization": "Bearer test-token"}
+                )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Only items from ws1 (ws2 has no config)
+            assert len(data) == 1
+            assert data[0]["_workspace"] == "ws1"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -227,6 +227,52 @@ DELETE /<workspace>
 
 ---
 
+### All Items (Cross-Workspace)
+
+#### Get All Items
+
+```http
+GET /all-items?page=<int>&page_size=<int>&order_by=<field>&filters=<str>
+```
+
+**Authentication**: Firebase Bearer Token (admin users only)
+
+**Query Parameters**:
+- `page` (default: 0): Page number
+- `page_size` (default: 10): Items per page
+- `order_by` (default: -created_at): Field to sort by (prefix with '-' for descending)
+- `filters` (optional): Pipe-separated filters (same format as `/<workspace>/items`)
+
+**Description**: Retrieves items across all workspaces. Each item includes a `_workspace` field identifying its source workspace. Admin-level access: all private fields are included and no moderation filter is applied. Results are collected from all workspaces, re-sorted, then paginated.
+
+**Example**:
+```bash
+curl "https://region-project.cloudfunctions.net/chronomaps_api/all-items?page=0&page_size=20&order_by=-created_at" \
+  -H "Authorization: Bearer $FIREBASE_TOKEN"
+```
+
+**Response**:
+```json
+[
+  {
+    "_id": "item-id-1",
+    "_workspace": "workspace-id-1",
+    "title": "Item Title",
+    "created_at": "2025-01-15T10:30:00Z",
+    ...
+  },
+  {
+    "_id": "item-id-2",
+    "_workspace": "workspace-id-2",
+    "title": "Another Item",
+    "created_at": "2025-01-14T09:00:00Z",
+    ...
+  }
+]
+```
+
+---
+
 ### Item Management
 
 #### Create Item

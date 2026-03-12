@@ -321,6 +321,44 @@ def create_firestore_index(workspace, order_by_field, filters_str):
         print(f"Error creating index: {e}")
 
 # Endpoints
+@app.get("/all-items")
+@require_firebase_auth
+def get_all_items():
+    page = flask.request.args.get("page", 0, type=int)
+    page_size = flask.request.args.get("page_size", 10, type=int)
+    order_by = flask.request.args.get("order_by")
+    filters = flask.request.args.get("filters", type=str)
+
+    all_items = []
+    for collection in db.collections():
+        config_ref = collection.document('.config')
+        config_doc = config_ref.get()
+        if not config_doc.exists:
+            continue
+
+        workspace = collection.id
+        items, _, _ = fetch_and_filter_items(workspace, filters, order_by)
+
+        items_metadata = [
+            sanitize_metadata(
+                dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace),
+                exclude_private=False
+            )
+            for item in items
+        ]
+        all_items.extend(items_metadata)
+
+    # Re-sort combined results
+    all_items = sort_items_in_memory(
+        [{"metadata": item} for item in all_items],
+        order_by or "-created_at"
+    )
+    all_items = [item["metadata"] for item in all_items]
+
+    # Paginate
+    paginated = all_items[page * page_size:(page + 1) * page_size]
+    return flask.jsonify(paginated), 200
+
 @app.get("/")
 @require_firebase_auth
 def list_workspaces():
