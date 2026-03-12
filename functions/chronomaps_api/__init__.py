@@ -14,6 +14,9 @@ from .resolve_firebase_user import require_firebase_auth
 db = firestore.client()
 app = flask.Flask(__name__)
 
+# In-memory cache for /all-items
+_all_items_cache = None  # dict with 'params' and 'items', or None
+
 PRIVILEGE_ADMIN = 4
 PRIVILEGE_PRIVATE_KEY = 3
 PRIVILEGE_COLLABORATE = 2
@@ -328,38 +331,44 @@ def create_firestore_index(workspace, order_by_field, filters_str):
 @app.get("/all-items")
 @require_firebase_auth
 def get_all_items():
+    global _all_items_cache
     page = flask.request.args.get("page", 0, type=int)
     page_size = flask.request.args.get("page_size", 10, type=int)
     order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
 
-    all_items = []
-    for collection in db.collections():
-        config_ref = collection.document('.config')
-        config_doc = config_ref.get()
-        if not config_doc.exists:
-            continue
+    cache_params = (order_by, filters)
+    if _all_items_cache is not None and _all_items_cache['params'] == cache_params:
+        all_items = _all_items_cache['items']
+    else:
+        all_items = []
+        for collection in db.collections():
+            config_ref = collection.document('.config')
+            config_doc = config_ref.get()
+            if not config_doc.exists:
+                continue
 
-        workspace = collection.id
-        items, _, _ = fetch_and_filter_items(workspace, filters, order_by)
+            workspace = collection.id
+            items, _, _ = fetch_and_filter_items(workspace, filters, order_by)
 
-        items_metadata = [
-            sanitize_metadata(
-                dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace, _key=item.get('key', '')),
-                exclude_private=False
-            )
-            for item in items
-        ]
-        for item in items_metadata:
-            item.pop('embedding', None)
-        all_items.extend(items_metadata)
+            items_metadata = [
+                sanitize_metadata(
+                    dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace, _key=item.get('key', '')),
+                    exclude_private=False
+                )
+                for item in items
+            ]
+            for item in items_metadata:
+                item.pop('embedding', None)
+            all_items.extend(items_metadata)
 
-    # Re-sort combined results
-    all_items = sort_items_in_memory(
-        [{"metadata": item} for item in all_items],
-        order_by or "-created_at"
-    )
-    all_items = [item["metadata"] for item in all_items]
+        # Re-sort combined results
+        all_items = sort_items_in_memory(
+            [{"metadata": item} for item in all_items],
+            order_by or "-created_at"
+        )
+        all_items = [item["metadata"] for item in all_items]
+        _all_items_cache = {'params': cache_params, 'items': all_items}
 
     # Paginate
     paginated = all_items[page * page_size:(page + 1) * page_size]
@@ -397,6 +406,7 @@ def create_workspace():
 
 @app.post("/<workspace>")
 def create_item(workspace):
+    global _all_items_cache
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin", "collaborate"])
     metadata = flask.request.json
@@ -404,6 +414,7 @@ def create_item(workspace):
     item_key = str(uuid.uuid4())
     item = {"key": item_key, "metadata": metadata}
     db.collection(workspace).document(item_id).set(item)
+    _all_items_cache = None
     return {"item_id": item_id, "item_key": item_key}, 201
 
 @app.get("/<workspace>")
@@ -554,6 +565,8 @@ def update_item(workspace, item_id):
     metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
     item_ref.update({"metadata": item["metadata"]})
+    global _all_items_cache
+    _all_items_cache = None
     return item["metadata"], 200
 
 @app.delete("/<workspace>/<item_id>")
@@ -570,6 +583,8 @@ def delete_item(workspace, item_id):
         if not item or item["key"] != item_key:
             flask.abort(403, "Unauthorized")
     item_ref.delete()
+    global _all_items_cache
+    _all_items_cache = None
     return {"message": "Item deleted"}, 200
 
 @app.put("/<workspace>")
