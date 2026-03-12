@@ -345,7 +345,7 @@ def get_all_items():
 
         items_metadata = [
             sanitize_metadata(
-                dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace),
+                dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace, _item_key=item.get('key', '')),
                 exclude_private=False
             )
             for item in items
