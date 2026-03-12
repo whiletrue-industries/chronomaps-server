@@ -160,8 +160,12 @@ def sort_items_in_memory(items, order_by_str):
                 return None
         return val
 
-    # Sort with None values at the end
-    return sorted(items, key=lambda x: (get_nested_value(x, order_key) is None, get_nested_value(x, order_key) or ''), reverse=reverse)
+    # Sort with None values at the end, converting to string to handle mixed types
+    def sort_key(x):
+        val = get_nested_value(x, order_key)
+        return (val is None, str(val) if val is not None else '')
+
+    return sorted(items, key=sort_key, reverse=reverse)
 
 def fetch_and_filter_items(workspace, filters=None, order_by=None):
     """
