@@ -927,6 +927,13 @@ class TestAggregateEndpoint:
 class TestAllItemsEndpoint:
     """Test the /all-items endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def reset_cache(self):
+        import chronomaps_api
+        chronomaps_api._all_items_cache = None
+        yield
+        chronomaps_api._all_items_cache = None
+
     def _make_mock_collection(self, workspace_id, items, has_config=True):
         """Helper to create a mock collection with config and items."""
         collection = Mock()
