@@ -310,6 +310,26 @@ class TestEnhanceImage:
         blob_calls = [call[0][0] for call in mock_storage.blob.call_args_list]
         assert "ws/item/screenshot.thumbnail.300.jpeg" in blob_calls
 
+    def test_force_reprocesses_existing(self, mock_storage):
+        from enhance_image import enhance_image
+
+        jpeg_bytes = _make_jpeg_bytes()
+
+        enhanced_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.enhanced.jpeg")
+        original_blob = _make_blob(exists=True)
+        original_blob.download_as_bytes.return_value = jpeg_bytes
+        thumb_blob = _make_blob(exists=True, public_url="https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.thumbnail.jpeg")
+
+        mock_storage.blob.side_effect = [enhanced_blob, original_blob, thumb_blob]
+
+        result = enhance_image(screenshot_path="ws/item/screenshot.jpeg", force=True)
+
+        assert not isinstance(result, tuple)
+        assert result["already_existed"] is False
+        # Should re-upload both enhanced and thumbnail
+        enhanced_blob.upload_from_file.assert_called_once()
+        thumb_blob.upload_from_file.assert_called_once()
+
     def test_with_legacy_url(self, mock_storage):
         from enhance_image import enhance_image
 

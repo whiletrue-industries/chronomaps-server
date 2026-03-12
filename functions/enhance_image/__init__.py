@@ -105,7 +105,7 @@ def _upload_image(blob, img: Image.Image, quality: int = 90):
     blob.make_public()
 
 
-def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side: int = 1000, thumbnail_size: int = 200):
+def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side: int = 1000, thumbnail_size: int = 200, force: bool = False):
     """Enhance a screenshot image and create a thumbnail.
 
     Accepts either a storage object path or a full URL. Checks if the
@@ -132,7 +132,7 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
 
     # Check if enhanced version already exists
     enhanced_blob = bucket.blob(enhanced_object_path)
-    enhanced_existed = enhanced_blob.exists()
+    enhanced_existed = enhanced_blob.exists() and not force
 
     if enhanced_existed:
         enhanced_img = None
@@ -151,7 +151,7 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
 
     # Create thumbnail from enhanced image if it doesn't exist
     thumb_blob = bucket.blob(thumb_object_path)
-    if not thumb_blob.exists():
+    if force or not thumb_blob.exists():
         if enhanced_img is None:
             # Need to download the enhanced image to create thumbnail
             enhanced_bytes = enhanced_blob.download_as_bytes()

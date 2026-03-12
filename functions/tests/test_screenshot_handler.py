@@ -317,7 +317,7 @@ class TestReplaceItemImage:
         # Should update the item with the new URL
         mock_api_requests.put.assert_called_once()
 
-    def test_triggers_enhancement(self, mock_api_requests, mock_storage, mock_enhance_image):
+    def test_triggers_enhancement_with_force(self, mock_api_requests, mock_storage, mock_enhance_image):
         from screenshot_handler import replace_item_image
 
         replace_item_image(
@@ -332,6 +332,7 @@ class TestReplaceItemImage:
         mock_enhance_image.assert_called_once()
         call_kwargs = mock_enhance_image.call_args[1]
         assert "screenshot_url" in call_kwargs
+        assert call_kwargs.get("force") is True
 
     def test_no_analysis_performed(self, mock_api_requests, mock_storage):
         """Verify that no OpenAI calls are made."""

@@ -235,7 +235,7 @@ def replace_item_image(image_bytes, image_content_type, workspace, item_id, item
     screenshot_url = upload_image(image_bytes, image_content_type, workspace, item_id)
 
     # Pre-generate enhanced version for faster TSNE processing later
-    enhanced_result = enhance_image_fn(screenshot_url=screenshot_url)
+    enhanced_result = enhance_image_fn(screenshot_url=screenshot_url, force=True)
     if isinstance(enhanced_result, tuple):
         print('WARNING: failed to enhance image:', enhanced_result[0])
 
