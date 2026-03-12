@@ -346,6 +346,8 @@ def get_all_items():
             )
             for item in items
         ]
+        for item in items_metadata:
+            item.pop('embedding', None)
         all_items.extend(items_metadata)
 
     # Re-sort combined results
