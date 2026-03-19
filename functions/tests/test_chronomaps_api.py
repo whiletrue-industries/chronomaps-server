@@ -1090,5 +1090,308 @@ class TestAllItemsEndpoint:
             assert data[0]["_workspace"] == "ws1"
 
 
+class TestTemporaryCollaboration:
+    """Test temporary collaboration feature."""
+
+    def _make_config_with_tc(self, sample_workspace_config, expiry_offset=300, properties=None):
+        """Helper: return a config dict with temporary_collaboration set."""
+        import time
+        config = dict(sample_workspace_config)
+        config["temporary_collaboration"] = {
+            "expiry": time.time() + expiry_offset,
+            "allowed_properties": properties or ["title", "description"]
+        }
+        return config
+
+    # --- New endpoint tests ---
+
+    def test_set_temporary_collaboration_with_properties(self, client, mock_db, sample_workspace_config):
+        """Admin sets temporary collaboration with time and properties."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?time=300&properties=title,description",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "expiry" in data
+        assert data["allowed_properties"] == ["title", "description"]
+        assert data["ttl"] > 0
+        config_ref.update.assert_called_once()
+        call_args = config_ref.update.call_args[0][0]
+        assert "temporary_collaboration" in call_args
+        assert call_args["temporary_collaboration"]["allowed_properties"] == ["title", "description"]
+
+    def test_set_temporary_collaboration_adjust_expiry(self, client, mock_db, sample_workspace_config):
+        """Adjust expiry of existing temporary collaboration."""
+        import time as time_mod
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=300)
+        original_expiry = config_with_tc["temporary_collaboration"]["expiry"]
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?time=60",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["expiry"] == original_expiry + 60
+        config_ref.update.assert_called_once_with({"temporary_collaboration.expiry": original_expiry + 60})
+
+    def test_set_temporary_collaboration_subtract_time(self, client, mock_db, sample_workspace_config):
+        """Subtract time from existing temporary collaboration."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=300)
+        original_expiry = config_with_tc["temporary_collaboration"]["expiry"]
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?time=-60",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["expiry"] == original_expiry - 60
+
+    def test_set_temporary_collaboration_requires_admin(self, client, mock_db, sample_workspace_config):
+        """Collaborate key should be rejected."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?time=300&properties=title",
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]}
+        )
+
+        assert response.status_code == 403
+
+    def test_set_temporary_collaboration_adjust_without_existing(self, client, mock_db, sample_workspace_config):
+        """Adjusting without existing temporary collaboration returns 400."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?time=60",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 400
+
+    def test_set_temporary_collaboration_missing_time(self, client, mock_db, sample_workspace_config):
+        """Missing time parameter returns 400."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.post(
+            "/test-workspace/temporary-collaboration?properties=title",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 400
+
+    # --- get_workspace tests ---
+
+    def test_get_workspace_shows_ttl_when_active(self, client, mock_db, sample_workspace_config):
+        """Workspace metadata includes TTL when temporary collaboration is active."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=300)
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.get(
+            "/test-workspace",
+            headers={"Authorization": sample_workspace_config["keys"]["view"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "temporary_collaboration_ttl" in data
+        assert data["temporary_collaboration_ttl"] > 0
+
+    def test_get_workspace_hides_ttl_when_expired(self, client, mock_db, sample_workspace_config):
+        """Workspace metadata excludes TTL when temporary collaboration is expired."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=-100)
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.get(
+            "/test-workspace",
+            headers={"Authorization": sample_workspace_config["keys"]["view"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "temporary_collaboration_ttl" not in data
+
+    def test_get_workspace_no_ttl_when_absent(self, client, mock_db, sample_workspace_config):
+        """Workspace metadata has no TTL when no temporary collaboration exists."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.get(
+            "/test-workspace",
+            headers={"Authorization": sample_workspace_config["keys"]["view"]}
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "temporary_collaboration_ttl" not in data
+
+    # --- update_item tests ---
+
+    def test_update_item_temp_collab_filters_properties(self, client, mock_db, sample_workspace_config, sample_item):
+        """Collaborate key without item key: only allowed properties are updated."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, properties=["title"])
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+
+        item_ref = Mock()
+        item_ref.get.return_value.to_dict.return_value = sample_item
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return item_ref
+
+        mock_db.collection.return_value.document.side_effect = mock_document
+
+        response = client.put(
+            "/test-workspace/test-item-id",
+            json={"title": "New Title", "forbidden_field": "should be filtered"},
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]},
+            content_type="application/json"
+        )
+
+        assert response.status_code == 200
+        update_call = item_ref.update.call_args[0][0]
+        assert update_call["metadata"]["title"] == "New Title"
+        assert "forbidden_field" not in update_call["metadata"] or update_call["metadata"].get("forbidden_field") != "should be filtered"
+
+    def test_update_item_temp_collab_rejects_no_allowed_properties(self, client, mock_db, sample_workspace_config, sample_item):
+        """Collaborate key, active temp collab, but no allowed properties in request: 400."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, properties=["title"])
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+
+        item_ref = Mock()
+        item_ref.get.return_value.to_dict.return_value = sample_item
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return item_ref
+
+        mock_db.collection.return_value.document.side_effect = mock_document
+
+        response = client.put(
+            "/test-workspace/test-item-id",
+            json={"forbidden_field": "not allowed"},
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]},
+            content_type="application/json"
+        )
+
+        assert response.status_code == 400
+
+    def test_update_item_temp_collab_rejected_when_expired(self, client, mock_db, sample_workspace_config, sample_item):
+        """Collaborate key, no item key, expired temp collab: 403."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=-100)
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+
+        item_ref = Mock()
+        item_ref.get.return_value.to_dict.return_value = sample_item
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return item_ref
+
+        mock_db.collection.return_value.document.side_effect = mock_document
+
+        response = client.put(
+            "/test-workspace/test-item-id",
+            json={"title": "New Title"},
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]},
+            content_type="application/json"
+        )
+
+        assert response.status_code == 403
+
+    def test_update_item_admin_unaffected_by_temp_collab(self, client, mock_db, sample_workspace_config, sample_item):
+        """Admin key: all properties pass through regardless of temp collab."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, properties=["title"])
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+
+        item_ref = Mock()
+        item_ref.get.return_value.to_dict.return_value = sample_item
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return item_ref
+
+        mock_db.collection.return_value.document.side_effect = mock_document
+
+        response = client.put(
+            "/test-workspace/test-item-id",
+            json={"title": "New", "other_field": "also updated"},
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]},
+            content_type="application/json"
+        )
+
+        assert response.status_code == 200
+        update_call = item_ref.update.call_args[0][0]
+        assert update_call["metadata"]["other_field"] == "also updated"
+
+    def test_update_item_with_item_key_unaffected_by_temp_collab(self, client, mock_db, sample_workspace_config, sample_item):
+        """Item key path works as before, no property filtering."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config, properties=["title"])
+
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+
+        item_ref = Mock()
+        item_ref.get.return_value.to_dict.return_value = sample_item
+
+        def mock_document(doc_id):
+            if doc_id == ".config":
+                return config_ref
+            return item_ref
+
+        mock_db.collection.return_value.document.side_effect = mock_document
+
+        response = client.put(
+            f"/test-workspace/test-item-id?item-key={sample_item['key']}",
+            json={"title": "New", "other_field": "also updated"},
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]},
+            content_type="application/json"
+        )
+
+        assert response.status_code == 200
+        update_call = item_ref.update.call_args[0][0]
+        assert update_call["metadata"]["other_field"] == "also updated"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
