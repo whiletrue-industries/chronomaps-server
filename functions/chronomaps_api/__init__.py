@@ -649,7 +649,9 @@ def set_temporary_collaboration(workspace):
 
     if properties:
         expiry = time.time() + time_param
-        allowed_properties = [p.strip() for p in properties.split(",")]
+        allowed_properties = list(dict.fromkeys(p.strip() for p in properties.split(",") if p.strip()))
+        if not allowed_properties:
+            flask.abort(400, "No valid properties provided")
         config_ref.update({
             "temporary_collaboration": {
                 "expiry": expiry,

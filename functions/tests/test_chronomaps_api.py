@@ -1128,7 +1128,6 @@ class TestTemporaryCollaboration:
 
     def test_set_temporary_collaboration_adjust_expiry(self, client, mock_db, sample_workspace_config):
         """Adjust expiry of existing temporary collaboration."""
-        import time as time_mod
         config_with_tc = self._make_config_with_tc(sample_workspace_config, expiry_offset=300)
         original_expiry = config_with_tc["temporary_collaboration"]["expiry"]
 
@@ -1282,7 +1281,7 @@ class TestTemporaryCollaboration:
         assert response.status_code == 200
         update_call = item_ref.update.call_args[0][0]
         assert update_call["metadata"]["title"] == "New Title"
-        assert "forbidden_field" not in update_call["metadata"] or update_call["metadata"].get("forbidden_field") != "should be filtered"
+        assert "forbidden_field" not in update_call["metadata"]
 
     def test_update_item_temp_collab_rejects_no_allowed_properties(self, client, mock_db, sample_workspace_config, sample_item):
         """Collaborate key, active temp collab, but no allowed properties in request: 400."""
