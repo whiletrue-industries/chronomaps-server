@@ -1,4 +1,5 @@
 import json
+import time
 from firebase_admin import firestore, credentials
 import flask
 import uuid
@@ -50,6 +51,14 @@ def authenticate(workspace, key, required_roles):
 SALT = PRIVATE_KEY[:16].encode()
 def calculate_author_id(email):
     return hashlib.sha256(email.encode() + SALT).hexdigest()
+
+def get_active_temporary_collaboration(workspace):
+    config_ref = db.collection(workspace).document(".config")
+    config = config_ref.get().to_dict()
+    tc = config.get("temporary_collaboration") if config else None
+    if tc and tc["expiry"] > time.time():
+        return tc
+    return None
 
 def sanitize_metadata(metadata, exclude_private=True):
     ret = metadata.copy()
@@ -426,6 +435,11 @@ def get_workspace(workspace):
     ret = config["metadata"]
     if admin:
         ret.update(config["config"])
+    tc = config.get("temporary_collaboration")
+    if tc:
+        ttl = tc["expiry"] - time.time()
+        if ttl > 0:
+            ret["temporary_collaboration_ttl"] = ttl
     return ret, 200
 
 @app.get("/<workspace>/items")
@@ -551,17 +565,29 @@ def get_item(workspace, item_id):
 def update_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
     item_key = flask.request.args.get("item-key")
+    temp_collab = None
     if not item_key:
-        privilege = authenticate(workspace, key, ["admin"])
+        privilege = authenticate(workspace, key, ["admin", "collaborate"])
+        if privilege < PRIVILEGE_ADMIN:
+            tc = get_active_temporary_collaboration(workspace)
+            if not tc:
+                flask.abort(403, "Unauthorized")
+            temp_collab = tc
     else:
         privilege = authenticate(workspace, key, ["admin", "collaborate"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
+    if not item:
+        flask.abort(404, "Item not found")
     if item_key:
-        if not item or item["key"] != item_key:
+        if item["key"] != item_key:
             flask.abort(403, "Unauthorized")
         privilege = PRIVILEGE_PRIVATE_KEY
     metadata = flask.request.json
+    if temp_collab:
+        metadata = {k: v for k, v in metadata.items() if k in temp_collab["allowed_properties"]}
+        if not metadata:
+            flask.abort(400, "No allowed properties in request")
     metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
     item_ref.update({"metadata": item["metadata"]})
@@ -607,6 +633,46 @@ def update_workspace(workspace):
         return {"message": "No updates provided"}, 400
     db.collection(workspace).document(".config").update(updates)
     return {"message": "Workspace updated", "updates": updates}, 200
+
+@app.post("/<workspace>/temporary-collaboration")
+def set_temporary_collaboration(workspace):
+    key = flask.request.headers.get("Authorization")
+    authenticate(workspace, key, ["admin"])
+
+    time_param = flask.request.args.get("time", type=int)
+    properties = flask.request.args.get("properties")
+
+    if time_param is None:
+        flask.abort(400, "Missing required parameter: time")
+
+    config_ref = db.collection(workspace).document(".config")
+
+    if properties:
+        expiry = time.time() + time_param
+        allowed_properties = [p.strip() for p in properties.split(",")]
+        config_ref.update({
+            "temporary_collaboration": {
+                "expiry": expiry,
+                "allowed_properties": allowed_properties
+            }
+        })
+    else:
+        config = config_ref.get().to_dict()
+        existing = config.get("temporary_collaboration") if config else None
+        if not existing:
+            flask.abort(400, "No existing temporary collaboration to adjust")
+        expiry = existing["expiry"] + time_param
+        allowed_properties = existing["allowed_properties"]
+        config_ref.update({
+            "temporary_collaboration.expiry": expiry
+        })
+
+    ttl = expiry - time.time()
+    return {
+        "expiry": expiry,
+        "ttl": ttl,
+        "allowed_properties": allowed_properties
+    }, 200
 
 @app.delete("/<workspace>")
 def delete_workspace(workspace):

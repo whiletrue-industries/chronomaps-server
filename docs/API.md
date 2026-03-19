@@ -173,6 +173,9 @@ GET /<workspace>
 
 Note: Full config with keys only returned with admin privilege.
 
+When temporary collaboration is active, the response includes an additional field:
+- `temporary_collaboration_ttl`: Number of seconds remaining until temporary collaboration expires (only present when active)
+
 ---
 
 #### Update Workspace
@@ -207,6 +210,37 @@ PUT /<workspace>?public=<bool>&collaborate=<bool>
   }
 }
 ```
+
+---
+
+#### Set Temporary Collaboration
+
+```http
+POST /<workspace>/temporary-collaboration?time=<int>&properties=<str>
+```
+
+**Authentication**: Admin key required
+
+**Query Parameters**:
+- `time` (required): Time in seconds. When `properties` is provided, this is the duration from now. When `properties` is omitted, this is a delta applied to the existing expiry (e.g. `-60` to subtract a minute).
+- `properties` (optional): Comma-separated list of property names that collaborators may edit without an item key.
+
+**Behavior**:
+- **With `properties`**: Creates or replaces temporary collaboration. Sets expiry to `now + time` and stores the allowed property list.
+- **Without `properties`**: Adjusts the expiry of an existing temporary collaboration by `time` seconds. Returns 400 if no temporary collaboration exists.
+
+**Response**:
+```json
+{
+  "expiry": 1742400000.0,
+  "ttl": 299.5,
+  "allowed_properties": ["title", "description"]
+}
+```
+
+**Effect on other endpoints**:
+- `GET /<workspace>`: Adds `temporary_collaboration_ttl` to the response while active
+- `PUT /<workspace>/<item_id>`: Allows collaborate key holders to update items without an item key, but only for the allowed properties
 
 ---
 
@@ -458,6 +492,8 @@ PUT /<workspace>/<item_id>?item-key=<item_key>
 ```
 
 **Authentication**: Admin key OR Collaborate key + item-key
+
+When [temporary collaboration](#set-temporary-collaboration) is active, a collaborate key may also update items **without** an item key — but only the properties listed in the temporary collaboration configuration. Properties not in the allowed list are silently filtered out. Returns 400 if no allowed properties remain after filtering. Admin and item-key access are unaffected (no property filtering).
 
 **Request Body**:
 ```json
@@ -755,9 +791,15 @@ Stored in Firestore at `<workspace>/.config`
   "config": {
     "collaborate": false,
     "public": false
+  },
+  "temporary_collaboration": {
+    "expiry": 1742400000.0,
+    "allowed_properties": ["title", "description"]
   }
 }
 ```
+
+Note: `temporary_collaboration` is only present when set by an admin via the [Set Temporary Collaboration](#set-temporary-collaboration) endpoint.
 
 **Metadata Fields**:
 - `title`: Workspace display name
