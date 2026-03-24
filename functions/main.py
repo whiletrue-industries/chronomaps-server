@@ -174,10 +174,11 @@ def build_taxonomy(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("Unauthorized", status=401)
     similarity_threshold = req.args.get('similarity_threshold', 0.35, type=float)
     max_tags = req.args.get('max_tags', 3, type=int)
+    redesign = req.args.get('redesign', 'false').lower() == 'true'
     start = time.time()
 
     def generate():
-        for bit in build_taxonomy_fn(similarity_threshold=similarity_threshold, max_tags=max_tags):
+        for bit in build_taxonomy_fn(similarity_threshold=similarity_threshold, max_tags=max_tags, redesign=redesign):
             delta = int(time.time() - start)
             yield f"data: {json.dumps([delta, bit], ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')

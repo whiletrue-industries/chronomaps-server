@@ -339,7 +339,7 @@ def create_firestore_index(workspace, order_by_field, filters_str):
 # Endpoints
 @app.get("/taxonomy")
 def get_taxonomy():
-    taxonomy_ref = db.collection('__global__').document('.taxonomy')
+    taxonomy_ref = db.collection('chronomaps_global').document('taxonomy')
     taxonomy_doc = taxonomy_ref.get()
     if not taxonomy_doc.exists:
         return flask.jsonify({"error": "Taxonomy not yet generated"}), 404

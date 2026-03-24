@@ -5,17 +5,16 @@ EMBEDDING_DIMENSION = 3072
 EMBEDDING_MODEL = 'text-embedding-3-large'
 
 
-def use_item(item):
-    favorable_future = item.get('favorable_future')
-    if not favorable_future:
-        return False
-    if favorable_future in ['yes', 'no']:
-        return True
-    if 'prevent' in favorable_future or 'prefer' in favorable_future:
-        return True
+def use_item(item, favorable_future_required=True):
+    if favorable_future_required:
+        favorable_future = item.get('favorable_future')
+        if not favorable_future:
+            return False
+        if not any(x in favorable_future for x in ['yes', 'no', 'prevent', 'prefer']):
+            return False
     if 'future_scenario_description' not in item or not item['future_scenario_description']:
         return False
-    return False
+    return True
 
 
 def ensure_embeddings(records, db, openai_key, workspace=None):
@@ -40,7 +39,7 @@ def ensure_embeddings(records, db, openai_key, workspace=None):
             db.collection(_workspace).document(item_id).update({'metadata.embedding': embedding})
 
 
-def load_all_workspaces_items(db, openai_key):
+def load_all_workspaces_items(db, openai_key, favorable_future_required=True):
     records = []
     for collection in db.collections():
         config_ref = collection.document('.config')
@@ -65,7 +64,7 @@ def load_all_workspaces_items(db, openai_key):
             items.append(item)
         yield dict(msg=f'Got {len(items)} items from {workspace}')
         yield from ensure_embeddings(items, db, openai_key, workspace=workspace)
-        valid_items = [item for item in items if use_item(item) and
+        valid_items = [item for item in items if use_item(item, favorable_future_required=favorable_future_required) and
                        'embedding' in item and item['embedding'] and
                        len(item['embedding']) == EMBEDDING_DIMENSION]
         yield dict(msg=f'{len(valid_items)} valid items from {workspace}')
