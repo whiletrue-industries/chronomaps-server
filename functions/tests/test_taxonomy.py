@@ -491,6 +491,47 @@ class TestTagItem:
         assert 'topics' in put_json
         assert 'topics_version' in put_json
 
+    def test_works_without_item_key(self, mock_deps):
+        from taxonomy import tag_item
+        result = tag_item('ws', 'item-1', 'key')
+        assert 'topics' in result
+        # Verify item-key is not in params
+        get_call = mock_deps['http'].get.call_args
+        assert get_call[1]['params'] == {}
+
+    def test_passes_item_key_when_provided(self, mock_deps):
+        from taxonomy import tag_item
+        result = tag_item('ws', 'item-1', 'key', 'ikey')
+        assert 'topics' in result
+        get_call = mock_deps['http'].get.call_args
+        assert get_call[1]['params'] == {'item-key': 'ikey'}
+
+    def test_propagates_put_error_on_embedding_save(self, mock_deps):
+        from taxonomy import tag_item
+        mock_deps['http'].get.return_value.json.return_value = {
+            'metadata': {
+                'future_scenario_description': 'A scenario',
+            }
+        }
+        mock_deps['http'].put.return_value = Mock(status_code=403)
+        result = tag_item('ws', 'item-1', 'key')
+        assert isinstance(result, tuple)
+        assert result[1] == 403
+
+    def test_propagates_put_error_on_topics_save(self, mock_deps):
+        from taxonomy import tag_item
+        # First PUT (embedding) succeeds, second PUT (topics) fails
+        mock_deps['http'].put.side_effect = [
+            Mock(status_code=200),  # won't be called since embedding exists
+            Mock(status_code=403),  # topics update fails
+        ]
+        # Reset to just fail on first put (topics update) since embedding exists
+        mock_deps['http'].put.side_effect = None
+        mock_deps['http'].put.return_value = Mock(status_code=403)
+        result = tag_item('ws', 'item-1', 'key', 'ikey')
+        assert isinstance(result, tuple)
+        assert result[1] == 403
+
 
 # --- Tests for auto-tagging in screenshot_handler ---
 

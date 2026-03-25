@@ -100,13 +100,14 @@ def build_taxonomy(similarity_threshold=0.35, max_tags=3, redesign=False):
     yield dict(msg='Taxonomy build complete.')
 
 
-def tag_item(workspace, item_id, api_key, item_key, description=None, embedding=None,
+def tag_item(workspace, item_id, api_key, item_key=None, description=None, embedding=None,
              similarity_threshold=0.35, max_tags=3):
     url = f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}'
+    params = {'item-key': item_key} if item_key else {}
 
     # 1. Get description and embedding (use provided or fetch from item)
     if not description or not embedding:
-        response = http_requests.get(url, headers={'Authorization': api_key}, params={'item-key': item_key})
+        response = http_requests.get(url, headers={'Authorization': api_key}, params=params)
         if response.status_code != 200:
             return dict(error=f'Failed to fetch item: {response.status_code}'), response.status_code
         metadata = response.json().get('metadata', {})
@@ -119,8 +120,10 @@ def tag_item(workspace, item_id, api_key, item_key, description=None, embedding=
     # 2. Ensure embedding exists
     if not embedding or len(embedding) != EMBEDDING_DIMENSION:
         embedding = generate_embedding(description, OPENAI_KEY)
-        http_requests.put(url, json={'embedding': embedding},
-                         headers={'Authorization': api_key}, params={'item-key': item_key})
+        put_resp = http_requests.put(url, json={'embedding': embedding},
+                                     headers={'Authorization': api_key}, params=params)
+        if put_resp.status_code != 200:
+            return dict(error=f'Failed to save embedding: {put_resp.status_code}'), put_resp.status_code
 
     # 3. Get or create reference embeddings
     reference_embeddings = get_or_create_reference_embeddings(db, OPENAI_KEY)
@@ -139,7 +142,7 @@ def tag_item(workspace, item_id, api_key, item_key, description=None, embedding=
     version = datetime.datetime.now(datetime.timezone.utc).isoformat()
     update_response = http_requests.put(
         url, json={'topics': topics, 'topics_version': version},
-        headers={'Authorization': api_key}, params={'item-key': item_key}
+        headers={'Authorization': api_key}, params=params
     )
     if update_response.status_code != 200:
         return dict(error=f'Failed to update item: {update_response.status_code}'), update_response.status_code

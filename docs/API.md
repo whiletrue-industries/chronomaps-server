@@ -873,7 +873,7 @@ POST /tag_item?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>
 - `workspace` (required): Workspace ID
 - `api_key` (required): Workspace admin or collaborate key
 - `item_id` (required): Item to tag
-- `item_key` (required): Item key for authorization
+- `item_key` (optional): Item key for authorization. Not needed if `api_key` has admin privileges.
 
 **Description**: Tags a single item using the existing taxonomy. Loads cached reference embeddings from Firestore (generating any missing ones on demand), computes the item's embedding if needed, and assigns topic tags via cosine similarity. Updates the item's `metadata.topics` and `metadata.topics_version` fields.
 

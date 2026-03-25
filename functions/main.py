@@ -189,9 +189,9 @@ def tag_item(req: https_fn.Request) -> https_fn.Response:
     workspace = req.args.get('workspace')
     api_key = req.args.get('api_key')
     item_id = req.args.get('item_id')
-    item_key = req.args.get('item_key')
-    if not workspace or not api_key or not item_id or not item_key:
-        return https_fn.Response("Missing workspace, api_key, item_id or item_key", status=400)
+    item_key = req.args.get('item_key')  # optional if api_key has admin privileges
+    if not workspace or not api_key or not item_id:
+        return https_fn.Response("Missing workspace, api_key or item_id", status=400)
     result = tag_item_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key)
     if isinstance(result, tuple):
         return json.dumps(result[0]), result[1]
