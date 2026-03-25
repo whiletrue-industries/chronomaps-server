@@ -26,6 +26,9 @@ from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_f
 from enhance_image import enhance_image as enhance_image_fn
 from enhance_image import enhance_all_images as enhance_all_images_fn
 from complete_flow import complete_flow as complete_flow_fn
+from taxonomy import build_taxonomy as build_taxonomy_fn
+from taxonomy import tag_item as tag_item_fn
+from shared import verify_firebase_admin
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
 
@@ -164,6 +167,35 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_8, timeout_sec=1800)
+def build_taxonomy(req: https_fn.Request) -> https_fn.Response:
+    user = verify_firebase_admin(req)
+    if not user:
+        return https_fn.Response("Unauthorized", status=401)
+    similarity_threshold = req.args.get('similarity_threshold', 0.35, type=float)
+    max_tags = req.args.get('max_tags', 3, type=int)
+    redesign = req.args.get('redesign', 'false').lower() == 'true'
+    start = time.time()
+
+    def generate():
+        for bit in build_taxonomy_fn(similarity_threshold=similarity_threshold, max_tags=max_tags, redesign=redesign):
+            delta = int(time.time() - start)
+            yield f"data: {json.dumps([delta, bit], ensure_ascii=False)}\n\n"
+    return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL', 'SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
+def tag_item(req: https_fn.Request) -> https_fn.Response:
+    workspace = req.args.get('workspace')
+    api_key = req.headers.get('Authorization') or req.args.get('api_key')
+    item_id = req.args.get('item_id')
+    item_key = req.args.get('item_key')  # optional if api_key has admin privileges
+    if not workspace or not api_key or not item_id:
+        return https_fn.Response("Missing workspace, api_key or item_id", status=400)
+    result = tag_item_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key)
+    if isinstance(result, tuple):
+        return json.dumps(result[0]), result[1]
+    return json.dumps(result)
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every day 03:00", secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_1, timeout_sec=540)
 def enhance_all_daily(event: scheduler_fn.ScheduledEvent) -> None:

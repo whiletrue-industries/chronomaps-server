@@ -222,6 +222,23 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
     record_['automatic'] = automatic
     record_['metadata'] = record
 
+    # Generate embedding and auto-tag with taxonomy
+    try:
+        from shared import generate_embedding
+        from taxonomy import tag_item as tag_item_fn
+        from config import OPENAI_KEY as _openai_key
+        description = record.get('future_scenario_description', '')
+        if description:
+            embedding = generate_embedding(description, _openai_key)
+            record['embedding'] = embedding
+            update_item(workspace, item_id, item_key, api_key, {'embedding': embedding})
+            tag_result = tag_item_fn(workspace=workspace, item_id=item_id, api_key=api_key,
+                                     item_key=item_key, description=description, embedding=embedding)
+            if isinstance(tag_result, dict) and 'topics' in tag_result:
+                record['topics'] = tag_result['topics']
+    except Exception as e:
+        print(f'WARNING: failed to generate embedding/tag item: {e}')
+
     return record_
 
 
@@ -266,6 +283,23 @@ def reanalyze_item(workspace, item_id, item_key, api_key, automatic=False):
     err = update_item(workspace, item_id, item_key, api_key, record)
     if err:
         return err
+
+    # Generate embedding and auto-tag with taxonomy
+    try:
+        from shared import generate_embedding
+        from taxonomy import tag_item as tag_item_fn
+        from config import OPENAI_KEY as _openai_key
+        description = record.get('future_scenario_description', '')
+        if description:
+            embedding = generate_embedding(description, _openai_key)
+            record['embedding'] = embedding
+            update_item(workspace, item_id, item_key, api_key, {'embedding': embedding})
+            tag_result = tag_item_fn(workspace=workspace, item_id=item_id, api_key=api_key,
+                                     item_key=item_key, description=description, embedding=embedding)
+            if isinstance(tag_result, dict) and 'topics' in tag_result:
+                record['topics'] = tag_result['topics']
+    except Exception as e:
+        print(f'WARNING: failed to generate embedding/tag item: {e}')
 
     return dict(
         item_id=item_id,

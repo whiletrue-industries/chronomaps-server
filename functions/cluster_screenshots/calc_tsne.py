@@ -20,20 +20,9 @@ try:
 except ImportError:
     pass
 
+from shared import use_item, EMBEDDING_DIMENSION
+
 FONT = Path(__file__).with_name('SourceSans.ttf')
-
-
-def use_item(item):
-    favorable_future = item.get('favorable_future')
-    if not favorable_future:
-        return False
-    if favorable_future in ['yes', 'no']:
-        return True
-    if 'prevent' in favorable_future or 'prefer' in favorable_future:
-        return True
-    if 'future_scenario_description' not in item or not item['future_scenario_description']:
-        return False
-    return False
 
 def load_records(config, records, params: TSNEParams):
     if len(config) > 1:
@@ -67,7 +56,7 @@ def ensure_embeddings(records, workspace, api_key, params: TSNEParams):
     for i, record in enumerate(records):
         if i % 100 == 0:
             yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
-        if 'embedding' in record and record['embedding'] and len(record['embedding']) == params.EMBEDDING_DIMENSION:
+        if 'embedding' in record and record['embedding'] and len(record['embedding']) == EMBEDDING_DIMENSION:
             continue
         if 'future_scenario_description' not in record or not record['future_scenario_description']:
             continue

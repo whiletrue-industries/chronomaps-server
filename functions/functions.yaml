@@ -15,6 +15,41 @@ endpoints:
     - key: SERVICE_ACCOUNT_JSON
     serviceAccountEmail: null
     timeoutSeconds: null
+  build_taxonomy:
+    availableMemoryMb: 8192
+    concurrency: null
+    entryPoint: build_taxonomy
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: SERVICE_ACCOUNT_JSON
+    serviceAccountEmail: null
+    timeoutSeconds: 1800
+  tag_item:
+    availableMemoryMb: 512
+    concurrency: null
+    entryPoint: tag_item
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: OPENAI_API_KEY
+    - key: CHRONOMAPS_API_URL
+    - key: SERVICE_ACCOUNT_JSON
+    serviceAccountEmail: null
+    timeoutSeconds: null
   cluster_its_time:
     availableMemoryMb: 8192
     concurrency: null
