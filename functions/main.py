@@ -27,6 +27,7 @@ from enhance_image import enhance_image as enhance_image_fn
 from enhance_image import enhance_all_images as enhance_all_images_fn
 from complete_flow import complete_flow as complete_flow_fn
 from taxonomy import build_taxonomy as build_taxonomy_fn
+from taxonomy import tag_item as tag_item_fn
 from shared import verify_firebase_admin
 
 CORS = options.CorsOptions(cors_origins="*", cors_methods=["get", "post"])
@@ -182,6 +183,19 @@ def build_taxonomy(req: https_fn.Request) -> https_fn.Response:
             delta = int(time.time() - start)
             yield f"data: {json.dumps([delta, bit], ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL', 'SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
+def tag_item(req: https_fn.Request) -> https_fn.Response:
+    workspace = req.args.get('workspace')
+    api_key = req.args.get('api_key')
+    item_id = req.args.get('item_id')
+    item_key = req.args.get('item_key')
+    if not workspace or not api_key or not item_id or not item_key:
+        return https_fn.Response("Missing workspace, api_key, item_id or item_key", status=400)
+    result = tag_item_fn(workspace=workspace, item_id=item_id, api_key=api_key, item_key=item_key)
+    if isinstance(result, tuple):
+        return json.dumps(result[0]), result[1]
+    return json.dumps(result)
 
 @scheduler_fn.on_schedule(region='europe-west1', schedule="every day 03:00", secrets=['SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.GB_1, timeout_sec=540)
 def enhance_all_daily(event: scheduler_fn.ScheduledEvent) -> None:

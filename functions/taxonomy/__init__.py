@@ -4,16 +4,19 @@ from openai import OpenAI
 
 from firebase_admin import firestore
 
-from config import OPENAI_KEY
-from shared import load_all_workspaces_items
+from config import OPENAI_KEY, CHRONOMAPS_API_URL
+from shared import load_all_workspaces_items, EMBEDDING_DIMENSION, generate_embedding
 from taxonomy.design import sample_descriptions, design_taxonomy
-from taxonomy.naming import generate_slug, generate_reference_embeddings
+from taxonomy.naming import (
+    generate_slug, generate_reference_embeddings, save_reference_embeddings,
+    get_or_create_reference_embeddings, TAXONOMY_COLLECTION, TAXONOMY_DOCUMENT,
+)
 from taxonomy.assignment import assign_topics
+
+import requests as http_requests
 
 db = firestore.client()
 
-TAXONOMY_COLLECTION = 'chronomaps_global'
-TAXONOMY_DOCUMENT = 'taxonomy'
 BATCH_SIZE = 500
 
 
@@ -56,10 +59,14 @@ def build_taxonomy(similarity_threshold=0.35, max_tags=3, redesign=False):
             sub_names = [s['name']['english'] for s in theme.get('sub_themes', [])]
             yield dict(msg=f'  {theme["name"]["english"]}: {", ".join(sub_names)}')
 
-    # Step 3: Generate reference embeddings (always, they're cheap)
+    # Step 3: Generate reference embeddings and cache them
     yield dict(msg='Generating reference embeddings...')
-    reference_embeddings = generate_reference_embeddings(client, taxonomy)
+    reference_embeddings, reference_texts = generate_reference_embeddings(client, taxonomy)
+    keys = list(reference_embeddings.keys())
     yield dict(msg=f'Generated {len(reference_embeddings)} reference embeddings')
+
+    yield dict(msg='Caching reference embeddings...')
+    save_reference_embeddings(db, reference_embeddings, reference_texts, keys)
 
     # Step 4: Assign topics to each item
     embeddings = np.array([record['embedding'] for record in records])
@@ -91,6 +98,53 @@ def build_taxonomy(similarity_threshold=0.35, max_tags=3, redesign=False):
     _save_taxonomy_reference(taxonomy, topic_lists, records, version)
 
     yield dict(msg='Taxonomy build complete.')
+
+
+def tag_item(workspace, item_id, api_key, item_key, description=None, embedding=None,
+             similarity_threshold=0.35, max_tags=3):
+    url = f'{CHRONOMAPS_API_URL}/{workspace}/{item_id}'
+
+    # 1. Get description and embedding (use provided or fetch from item)
+    if not description or not embedding:
+        response = http_requests.get(url, headers={'Authorization': api_key}, params={'item-key': item_key})
+        if response.status_code != 200:
+            return dict(error=f'Failed to fetch item: {response.status_code}'), response.status_code
+        metadata = response.json().get('metadata', {})
+        description = description or metadata.get('future_scenario_description', '')
+        embedding = embedding or metadata.get('embedding')
+
+    if not description:
+        return dict(error='Item has no future_scenario_description'), 400
+
+    # 2. Ensure embedding exists
+    if not embedding or len(embedding) != EMBEDDING_DIMENSION:
+        embedding = generate_embedding(description, OPENAI_KEY)
+        http_requests.put(url, json={'embedding': embedding},
+                         headers={'Authorization': api_key}, params={'item-key': item_key})
+
+    # 3. Get or create reference embeddings
+    reference_embeddings = get_or_create_reference_embeddings(db, OPENAI_KEY)
+    if not reference_embeddings:
+        return dict(error='No taxonomy exists yet. Run build_taxonomy first.'), 404
+
+    # 4. Assign topics
+    embeddings_array = np.array([embedding])
+    assignments = assign_topics(
+        embeddings_array, reference_embeddings,
+        similarity_threshold=similarity_threshold, max_tags=max_tags
+    )
+    topics = assignments[0]['topics']
+
+    # 5. Update item with topics
+    version = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    update_response = http_requests.put(
+        url, json={'topics': topics, 'topics_version': version},
+        headers={'Authorization': api_key}, params={'item-key': item_key}
+    )
+    if update_response.status_code != 200:
+        return dict(error=f'Failed to update item: {update_response.status_code}'), update_response.status_code
+
+    return dict(topics=topics, similarity=assignments[0]['best_similarity'])
 
 
 def _load_existing_taxonomy():

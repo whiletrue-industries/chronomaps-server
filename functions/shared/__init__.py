@@ -17,8 +17,13 @@ def use_item(item, favorable_future_required=True):
     return True
 
 
+def generate_embedding(description, openai_key):
+    client = OpenAI(api_key=openai_key)
+    result = client.embeddings.create(model=EMBEDDING_MODEL, input=description)
+    return result.data[0].embedding
+
+
 def ensure_embeddings(records, db, openai_key, workspace=None):
-    openai = OpenAI(api_key=openai_key)
     for i, record in enumerate(records):
         if i % 100 == 0:
             yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
@@ -26,12 +31,7 @@ def ensure_embeddings(records, db, openai_key, workspace=None):
             continue
         if 'future_scenario_description' not in record or not record['future_scenario_description']:
             continue
-        description = record['future_scenario_description']
-        completion = openai.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=description
-        )
-        embedding = completion.data[0].embedding
+        embedding = generate_embedding(record['future_scenario_description'], openai_key)
         record['embedding'] = embedding
         _workspace = workspace or record.get('_workspace')
         item_id = record['_id']
