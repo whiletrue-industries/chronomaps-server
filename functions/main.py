@@ -187,7 +187,7 @@ def build_taxonomy(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL', 'SERVICE_ACCOUNT_JSON'], memory=options.MemoryOption.MB_512)
 def tag_item(req: https_fn.Request) -> https_fn.Response:
     workspace = req.args.get('workspace')
-    api_key = req.args.get('api_key')
+    api_key = req.headers.get('Authorization') or req.args.get('api_key')
     item_id = req.args.get('item_id')
     item_key = req.args.get('item_key')  # optional if api_key has admin privileges
     if not workspace or not api_key or not item_id:

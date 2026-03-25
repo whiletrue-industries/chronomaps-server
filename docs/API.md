@@ -864,16 +864,16 @@ Status: 404
 ### Tag Item
 
 ```http
-POST /tag_item?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>
+POST /tag_item?workspace=<id>&item_id=<id>&item_key=<key>
+Authorization: <api-key>
 ```
 
-**Authentication**: Workspace API key (admin or collaborate + item-key)
+**Authentication**: Workspace API key via `Authorization` header (or `api_key` query parameter). Admin key or collaborate key + item-key.
 
 **Query Parameters**:
 - `workspace` (required): Workspace ID
-- `api_key` (required): Workspace admin or collaborate key
 - `item_id` (required): Item to tag
-- `item_key` (optional): Item key for authorization. Not needed if `api_key` has admin privileges.
+- `item_key` (optional): Item key for authorization. Not needed if the API key has admin privileges.
 
 **Description**: Tags a single item using the existing taxonomy. Loads cached reference embeddings from Firestore (generating any missing ones on demand), computes the item's embedding if needed, and assigns topic tags via cosine similarity. Updates the item's `metadata.topics` and `metadata.topics_version` fields.
 
