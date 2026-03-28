@@ -603,6 +603,18 @@ def update_item(workspace, item_id):
     _all_items_cache = None
     return item["metadata"], 200
 
+@app.delete("/<workspace>/temporary-collaboration")
+def delete_temporary_collaboration(workspace):
+    key = flask.request.headers.get("Authorization")
+    authenticate(workspace, key, ["admin"])
+    config_ref = db.collection(workspace).document(".config")
+    config = config_ref.get().to_dict()
+    if not config or "temporary_collaboration" not in config:
+        flask.abort(404, "No temporary collaboration to delete")
+    from google.cloud.firestore_v1 import DELETE_FIELD
+    config_ref.update({"temporary_collaboration": DELETE_FIELD})
+    return {"message": "Temporary collaboration deleted"}, 200
+
 @app.delete("/<workspace>/<item_id>")
 def delete_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
@@ -613,8 +625,10 @@ def delete_item(workspace, item_id):
         authenticate(workspace, key, ["admin", "collaborate"])
     item_ref = db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
+    if not item:
+        flask.abort(404, "Item not found")
     if item_key:
-        if not item or item["key"] != item_key:
+        if item["key"] != item_key:
             flask.abort(403, "Unauthorized")
     item_ref.delete()
     global _all_items_cache
