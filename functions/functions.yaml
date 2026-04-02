@@ -63,7 +63,7 @@ endpoints:
     - europe-west1
     scheduleTrigger:
       retryConfig: {}
-      schedule: every 15 minutes
+      schedule: every friday 03:00
     secretEnvironmentVariables:
     - key: CHRONOMAPS_API_URL
     - key: OPENAI_API_KEY
