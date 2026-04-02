@@ -215,7 +215,7 @@ endpoints:
     - europe-west1
     scheduleTrigger:
       retryConfig: {}
-      schedule: every day 03:00
+      schedule: every saturday 03:00
     secretEnvironmentVariables:
     - key: SERVICE_ACCOUNT_JSON
     serviceAccountEmail: null
