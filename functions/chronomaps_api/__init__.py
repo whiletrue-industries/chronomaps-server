@@ -1,3 +1,4 @@
+import datetime
 import json
 import time
 from firebase_admin import firestore, credentials
@@ -60,10 +61,12 @@ def get_active_temporary_collaboration(workspace):
         return tc
     return None
 
-def sanitize_metadata(metadata, exclude_private=True):
+def sanitize_metadata(metadata, exclude_private=True, exclude_embedding=False):
     ret = metadata.copy()
     if exclude_private:
         ret = {k: v for k, v in metadata.items() if not (k.startswith(PRIVATE_KEY) or k == 'embedding')}
+    if exclude_embedding:
+        ret = {k: v for k, v in ret.items() if k != 'embedding'}
     if 'author_id' not in metadata and '_private_email' in metadata and metadata['_private_email']:
         ret['author_id'] = calculate_author_id(metadata['_private_email'])
     return ret
@@ -371,7 +374,7 @@ def get_all_items():
             items_metadata = [
                 sanitize_metadata(
                     dict(**item.get("metadata", {}), _id=item['id'], _workspace=workspace, _key=item.get('key', '')),
-                    exclude_private=False
+                    exclude_private=False, exclude_embedding=True
                 )
                 for item in items
             ]
@@ -458,6 +461,7 @@ def get_items(workspace):
     page_size = flask.request.args.get("page_size", 10, type=int)
     order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
+    include_embedding = flask.request.args.get("include_embedding", "false").lower() == "true"
 
     # Add moderation filter for non-admin users
     if privilege < PRIVILEGE_ADMIN:
@@ -474,7 +478,7 @@ def get_items(workspace):
     items_metadata = [
         sanitize_metadata(
             dict(**item.get("metadata", {}), _id=item['id'], **({"_key": item.get("key")} if privilege > PRIVILEGE_PRIVATE_KEY else {})),
-            exclude_private=privilege < PRIVILEGE_PRIVATE_KEY
+            exclude_private=privilege < PRIVILEGE_PRIVATE_KEY, exclude_embedding=not include_embedding
         )
         for item in items
     ]
@@ -598,6 +602,7 @@ def update_item(workspace, item_id):
             flask.abort(400, "No allowed properties in request")
     metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
+    item["metadata"]["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     item_ref.update({"metadata": item["metadata"]})
     global _all_items_cache
     _all_items_cache = None

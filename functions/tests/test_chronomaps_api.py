@@ -418,6 +418,8 @@ class TestItemEndpoints:
         )
 
         assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "updated_at" in data
 
     def test_delete_item(self, client, mock_db, sample_workspace_config, sample_item):
         """Test deleting an item."""

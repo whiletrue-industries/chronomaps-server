@@ -168,7 +168,8 @@ def _save_topics(records, assignments, version):
         ref = db.collection(workspace).document(item_id)
         batch.update(ref, {
             'metadata.topics': topics,
-            'metadata.topics_version': version
+            'metadata.topics_version': version,
+            'metadata.updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat()
         })
         batch_count += 1
 
