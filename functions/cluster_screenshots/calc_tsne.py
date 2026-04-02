@@ -39,6 +39,7 @@ def load_records(config, records, params: TSNEParams):
             req_params = dict(page_size=params.TO_PLOT*2, order_by='-created_at')
             yield dict(msg=f'Fetching from {workspace}...')
         workspace_metadata = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}', req_params, headers={'Authorization': api_key}).json()
+        req_params['include_embedding'] = 'true'
         items = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}/items', req_params, headers={'Authorization': api_key}).json()
         if isinstance(items, list):
             yield dict(msg=f'Got {len(items)} items.')
