@@ -107,6 +107,8 @@ class TestAnalyzeImage:
         assert record["transition_bar_certainty"] == 85
         assert record["automatic"] is False
         assert "created_at" in record
+        assert "updated_at" in record
+        assert record["created_at"] == record["updated_at"]
 
     def test_automatic_mode(self, mock_openai):
         from screenshot_handler import analyze_image
@@ -140,6 +142,8 @@ class TestAnalyzeImage:
 
         assert "Couldn't understand" in record["content"]
         assert "created_at" in record
+        assert "updated_at" in record
+        assert record["created_at"] == record["updated_at"]
 
 
 class TestUploadImage:

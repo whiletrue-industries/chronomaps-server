@@ -107,9 +107,11 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
     content = completion.choices[0].message.content
     if not content:
         print('COMPLETION:', completion.choices[0].message.to_dict())
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         return dict(
             content="Couldn't understand anything from the screenshot",
-            created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            created_at=now,
+            updated_at=now,
             automatic=automatic,
         )
 
@@ -130,8 +132,8 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
         future_scenario_description=content['future_scenario_description'],
         future_scenario_topics=content['future_scenario_topics'],
         detected_language=content['detected_language'],
-        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        created_at=(now := datetime.datetime.now(datetime.timezone.utc).isoformat()),
+        updated_at=now,
         automatic=automatic,
         plausibility=content.get('plausibility'),
         favorable_future=content.get('favorable_future'),
