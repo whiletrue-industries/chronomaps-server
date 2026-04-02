@@ -1,3 +1,4 @@
+import datetime
 import json
 import time
 from firebase_admin import firestore, credentials
@@ -598,6 +599,7 @@ def update_item(workspace, item_id):
             flask.abort(400, "No allowed properties in request")
     metadata = sanitize_metadata(metadata, privilege < PRIVILEGE_PRIVATE_KEY)
     item["metadata"].update(metadata)
+    item["metadata"]["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     item_ref.update({"metadata": item["metadata"]})
     global _all_items_cache
     _all_items_cache = None

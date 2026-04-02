@@ -131,6 +131,7 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
         future_scenario_topics=content['future_scenario_topics'],
         detected_language=content['detected_language'],
         created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         automatic=automatic,
         plausibility=content.get('plausibility'),
         favorable_future=content.get('favorable_future'),
