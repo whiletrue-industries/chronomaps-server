@@ -413,8 +413,14 @@ def list_workspaces():
 @require_firebase_auth
 def create_workspace():
     print("Creating workspace for user:", flask.g.firebase_user.get("email"))
-    metadata = flask.request.json
-    workspace_id = str(uuid.uuid4())
+    body = flask.request.json or {}
+    workspace_id = body.pop("workspace_id", None) or str(uuid.uuid4())
+    metadata = body
+    # If workspace already exists, return existing config (idempotent)
+    existing = db.collection(workspace_id).document(".config").get()
+    if existing.exists:
+        config = existing.to_dict()
+        return {"workspace_id": workspace_id, "config": config}, 200
     keys = generate_keys()
     config = {
         "metadata": metadata,
