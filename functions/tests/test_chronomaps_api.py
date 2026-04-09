@@ -237,6 +237,7 @@ class TestWorkspaceEndpoints:
             mock_get_user.return_value = {"email": "test@example.com", "uid": "test-uid"}
 
             mock_ref = Mock()
+            mock_ref.get.return_value.exists = False
             mock_db.collection.return_value.document.return_value = mock_ref
 
             response = client.post(
@@ -258,6 +259,7 @@ class TestWorkspaceEndpoints:
             mock_get_user.return_value = {"email": "test@example.com", "uid": "test-uid"}
 
             mock_ref = Mock()
+            mock_ref.get.return_value.exists = False
             mock_db.collection.return_value.document.return_value = mock_ref
 
             workspace_metadata = {
