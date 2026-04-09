@@ -66,7 +66,7 @@ def get_workspace_moderation(workspace, api_key):
     return moderation or 3, None
 
 
-def analyze_image(image_bytes, image_content_type, automatic=False, existing_metadata=None):
+def analyze_image(image_bytes, image_content_type, automatic=False, existing_metadata=None, user_metadata=None):
     """Run GPT-4 Vision analysis on image bytes.
 
     Args:
@@ -74,6 +74,7 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
         image_content_type: MIME type of the image.
         automatic: Use automatic analysis prompt.
         existing_metadata: If provided, appended to automatic prompt as context.
+        user_metadata: If provided, user-supplied values to consider in analysis.
 
     Returns an analysis record dict.
     """
@@ -82,6 +83,9 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
 
     if automatic and existing_metadata:
         prompt = AUTOMATIC_INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(existing_metadata, indent=2)
+
+    if user_metadata:
+        prompt += "\n\nThe user has provided the following values. Consider them in your analysis and use them to inform your response:\n" + json.dumps(user_metadata, indent=2)
 
     completion = client.chat.completions.create(
         model="gpt-4.1",
@@ -191,9 +195,13 @@ def download_item_image(workspace, item_id):
     return image_bytes, content_type
 
 
-def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg'):
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', user_metadata=None):
     """Full flow: analyze image, create new item, upload image."""
-    record = analyze_image(image_bytes, image_content_type, automatic=automatic)
+    record = analyze_image(image_bytes, image_content_type, automatic=automatic, user_metadata=user_metadata)
+
+    # Override AI-generated values with user-provided ones so they are preserved
+    if user_metadata:
+        record.update(user_metadata)
 
     moderation_result = get_workspace_moderation(workspace, api_key)
     if isinstance(moderation_result[0], dict) and 'error' in moderation_result[0]:

@@ -62,7 +62,11 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     print(f"Content type: {content_type}")
     automatic = req.args.get('automatic', 'false').lower() == 'true'
 
-    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type)
+    # Read optional user-provided metadata from form fields
+    user_metadata_raw = req.form.get('metadata')
+    user_metadata = json.loads(user_metadata_raw) if user_metadata_raw else None
+
+    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type, user_metadata=user_metadata)
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
 def replace_image(req: https_fn.Request) -> https_fn.Response:
