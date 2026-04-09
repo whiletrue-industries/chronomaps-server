@@ -85,7 +85,12 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
         prompt = AUTOMATIC_INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(existing_metadata, indent=2)
 
     if user_metadata:
-        prompt += "\n\nThe user has provided the following text or values contained in the image in question. Consider them as truth (overriding any text you might extract from the image), use them and refer to them in your analysis to inform your response:\n" + json.dumps(user_metadata, indent=2)
+        prompt += """
+
+The user has provided the following text or values contained in the image in question. 
+For example, `content_text` is the text extracted from the image (which is accurate and should be considered as truth).
+Consider them as truth (overriding any text you might extract from the image), use them and refer to them in your analysis to inform your response:
+ """ + json.dumps(user_metadata, indent=2)
 
     completion = client.chat.completions.create(
         model="gpt-4.1",
