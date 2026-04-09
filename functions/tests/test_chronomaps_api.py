@@ -14,6 +14,7 @@ import json
 import uuid
 from unittest.mock import Mock, patch, MagicMock
 from flask import Flask
+from firebase_admin import firestore
 import flask
 
 # Import the API module
@@ -1190,6 +1191,48 @@ class TestTemporaryCollaboration:
         )
 
         assert response.status_code == 400
+
+    def test_delete_temporary_collaboration(self, client, mock_db, sample_workspace_config):
+        """Admin can delete temporary collaboration and it no longer appears."""
+        config_with_tc = self._make_config_with_tc(sample_workspace_config)
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = config_with_tc
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.delete(
+            "/test-workspace/temporary-collaboration",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 204
+        config_ref.update.assert_called_once_with({"temporary_collaboration": firestore.DELETE_FIELD})
+
+    def test_delete_temporary_collaboration_requires_admin(self, client, mock_db, sample_workspace_config):
+        """Collaborate key should be rejected."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.delete(
+            "/test-workspace/temporary-collaboration",
+            headers={"Authorization": sample_workspace_config["keys"]["collaborate"]}
+        )
+
+        assert response.status_code == 403
+
+    def test_delete_temporary_collaboration_when_none_exists(self, client, mock_db, sample_workspace_config):
+        """Deleting when no TC exists should still succeed (idempotent)."""
+        config_ref = Mock()
+        config_ref.get.return_value.to_dict.return_value = sample_workspace_config
+        mock_db.collection.return_value.document.return_value = config_ref
+
+        response = client.delete(
+            "/test-workspace/temporary-collaboration",
+            headers={"Authorization": sample_workspace_config["keys"]["admin"]}
+        )
+
+        assert response.status_code == 204
+        config_ref.update.assert_called_once_with({"temporary_collaboration": firestore.DELETE_FIELD})
 
     def test_set_temporary_collaboration_missing_time(self, client, mock_db, sample_workspace_config):
         """Missing time parameter returns 400."""

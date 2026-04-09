@@ -244,6 +244,20 @@ POST /<workspace>/temporary-collaboration?time=<int>&properties=<str>
 
 ---
 
+#### Delete Temporary Collaboration
+
+```http
+DELETE /<workspace>/temporary-collaboration
+```
+
+**Authentication**: Admin key required
+
+**Description**: Removes the temporary collaboration configuration from the workspace. This is idempotent — calling it when no temporary collaboration exists does not produce an error.
+
+**Response**: `204 No Content`
+
+---
+
 #### Delete Workspace
 
 ```http
@@ -926,7 +940,7 @@ Stored in Firestore at `<workspace>/.config`
 }
 ```
 
-Note: `temporary_collaboration` is only present when set by an admin via the [Set Temporary Collaboration](#set-temporary-collaboration) endpoint.
+Note: `temporary_collaboration` is only present when set by an admin via the [Set Temporary Collaboration](#set-temporary-collaboration) endpoint. It can be removed via the [Delete Temporary Collaboration](#delete-temporary-collaboration) endpoint.
 
 **Metadata Fields**:
 - `title`: Workspace display name

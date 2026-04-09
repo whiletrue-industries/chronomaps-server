@@ -709,6 +709,14 @@ def set_temporary_collaboration(workspace):
         "allowed_properties": allowed_properties
     }, 200
 
+@app.delete("/<workspace>/temporary-collaboration")
+def delete_temporary_collaboration(workspace):
+    key = flask.request.headers.get("Authorization")
+    authenticate(workspace, key, ["admin"])
+    config_ref = db.collection(workspace).document(".config")
+    config_ref.update({"temporary_collaboration": firestore.DELETE_FIELD})
+    return "", 204
+
 @app.delete("/<workspace>")
 def delete_workspace(workspace):
     key = flask.request.headers.get("Authorization")
