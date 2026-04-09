@@ -85,7 +85,7 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
         prompt = AUTOMATIC_INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(existing_metadata, indent=2)
 
     if user_metadata:
-        prompt += "\n\nThe user has provided the following values. Consider them in your analysis and use them to inform your response:\n" + json.dumps(user_metadata, indent=2)
+        prompt += "\n\nThe user has provided the following values describing the image in question. Consider them as truth, use them and refer to them in your analysis to inform your response:\n" + json.dumps(user_metadata, indent=2)
 
     completion = client.chat.completions.create(
         model="gpt-4.1",
@@ -201,6 +201,7 @@ def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_c
 
     # Override AI-generated values with user-provided ones so they are preserved
     if user_metadata:
+        record['_original_ai_analysis'] = {k: v for k, v in record.items() if k in user_metadata}
         record.update(user_metadata)
 
     moderation_result = get_workspace_moderation(workspace, api_key)
