@@ -15,6 +15,25 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 
 ---
 
+## Multi-Database Support
+
+All endpoints under `chronomaps_api` accept an optional `db` query parameter that selects which Firestore database the request targets:
+
+- `db=<database-id>` — route the request to the named Firestore database.
+- Omitted — route to the project's **default** Firestore database (backwards compatible).
+
+The parameter is honored uniformly across every endpoint (workspace and item CRUD, listings, aggregation, taxonomy, `/all-items`, `/config`, etc.) — individual endpoint sections below do not repeat it.
+
+Example:
+```bash
+curl "https://region-project.cloudfunctions.net/chronomaps_api/?db=staging" \
+  -H "Authorization: Bearer $FIREBASE_TOKEN"
+```
+
+> Only the Flask-based `chronomaps_api` function honors `db`. Auxiliary Cloud Functions (`screenshot_handler`, `complete_flow`, `cluster_screenshots`, `build_taxonomy`, `tag_item`, etc.) always use the default Firestore database.
+
+---
+
 ## Authentication & Authorization
 
 The API uses a multi-tier key-based authorization system.
@@ -45,6 +64,12 @@ Authorization: <api-key>
 ```
 Authorization: Bearer <firebase-token>
 ```
+
+**4. Database Bearer Key** (override for Firebase-auth endpoints)
+```
+Authorization: Bearer <db-key>
+```
+When the target database's `config/config` document defines a `key`, that value can be sent as a bearer token in place of a Firebase ID token on any endpoint that normally requires Firebase auth (`GET /`, `POST /`, `GET /all-items`, `POST /build_taxonomy`). The override is per-database — each db has its own `key`. Configure or rotate it by writing to `config/config` in that db.
 
 ### Workspace Keys
 
@@ -87,6 +112,32 @@ When creating a workspace, you can set a `default_moderation_level` in the works
 ## Core API Endpoints
 
 Base URL: `https://<region>-<project>.cloudfunctions.net/chronomaps_api`
+
+### Database Configuration
+
+#### Get Database Metadata
+
+```http
+GET /config
+```
+
+**Authentication**: None (public endpoint)
+
+**Description**: Returns the `metadata` field of the target database's `config/config` document. Use this to discover human-readable information about a database (title, description, branding, etc.) without authenticating. The response intentionally excludes the `key` and `admins` fields.
+
+**Response**:
+```json
+{
+  "metadata": {
+    "title": "Production Database",
+    "description": "Live chronomaps data"
+  }
+}
+```
+
+If the `config/config` document does not exist, or has no `metadata` field, the endpoint returns `{"metadata": {}}` with status 200.
+
+---
 
 ### Workspace Management
 
@@ -1103,7 +1154,10 @@ Firebase Storage bucket: `chronomaps3-eu`
 
 2. **`emails`** - Email queue for sending emails via Firestore triggers
 
-3. **`config/config`** - Global configuration with admin user list
+3. **`config/config`** - Per-database configuration document. Fields:
+   - `admins` (list of email strings): users allowed to use Firebase auth on this db
+   - `key` (string, optional): bearer-token override for Firebase-auth endpoints (see [Authorization Methods](#authorization-methods))
+   - `metadata` (object, optional): public, human-readable metadata returned by [`GET /config`](#get-database-metadata)
 
 4. **`chronomaps_global`** - Cross-workspace data
    - `taxonomy` document - Hierarchical taxonomy reference (see [Taxonomy Document](#taxonomy-document))
@@ -1228,6 +1282,21 @@ curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filt
 # Get automatic items that are preferred futures
 curl "https://region-project.cloudfunctions.net/chronomaps_api/abc123/items?filters=automatic==true|favorable_future==prefer" \
   -H "Authorization: KEY123"
+```
+
+### Targeting a Non-Default Database
+
+```bash
+# Read the public metadata for the staging database
+curl "https://region-project.cloudfunctions.net/chronomaps_api/config?db=staging"
+
+# List workspaces in the staging database using a Firebase ID token
+curl "https://region-project.cloudfunctions.net/chronomaps_api/?db=staging" \
+  -H "Authorization: Bearer $FIREBASE_TOKEN"
+
+# List workspaces in the staging database using the per-db bearer key override
+curl "https://region-project.cloudfunctions.net/chronomaps_api/?db=staging" \
+  -H "Authorization: Bearer $STAGING_DB_KEY"
 ```
 
 ### Aggregating Items
