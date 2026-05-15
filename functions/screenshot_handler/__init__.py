@@ -12,7 +12,28 @@ import requests
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 AUTOMATIC_INSTRUCTIONS = Path(__file__).with_name('AUTOMATIC_SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
-client = OpenAI(api_key=OPENAI_KEY)
+
+
+class _LazyOpenAIClient:
+    """Defers OpenAI() construction until first attribute access.
+
+    Newer openai SDKs raise at construction if no API key is configured, which
+    would break import-time in environments without OPENAI_API_KEY (e.g. CI).
+    Tests can still `patch("screenshot_handler.client", ...)` — patching reads
+    the lazy proxy (no OpenAI construction) and replaces it with the mock.
+    """
+    _real = None
+
+    def _get(self):
+        if self._real is None:
+            self._real = OpenAI(api_key=OPENAI_KEY)
+        return self._real
+
+    def __getattr__(self, name):
+        return getattr(self._get(), name)
+
+
+client = _LazyOpenAIClient()
 
 bucket = storage.bucket(name=BUCKET_NAME)
 
