@@ -30,10 +30,11 @@ class _LazyOpenAIClient:
         return self._real
 
     def __getattr__(self, name):
-        # Don't construct on dunder lookups (e.g. mock.patch probing __func__,
-        # __class__, __signature__). These should miss like they would on a real
-        # OpenAI client rather than eagerly constructing it.
-        if name.startswith("__") and name.endswith("__"):
+        # Don't construct on private/dunder lookups (e.g. mock.patch probing
+        # __func__, inspect.iscoroutinefunction probing _is_coroutine_marker).
+        # The real OpenAI public surface we use is all non-underscore (chat,
+        # completions, etc.), so private misses are safe.
+        if name.startswith("_"):
             raise AttributeError(name)
         return getattr(self._get(), name)
 
