@@ -13,8 +13,13 @@ import re
 from config import PRIVATE_KEY
 from .resolve_firebase_user import require_firebase_auth
 
-db = firestore.client()
 app = flask.Flask(__name__)
+
+
+@app.before_request
+def _resolve_db():
+    db_id = flask.request.args.get('db')
+    flask.g.db = firestore.client(database_id=db_id) if db_id else firestore.client()
 
 # In-memory cache for /all-items
 _all_items_cache = None  # dict with 'params' and 'items', or None
@@ -34,7 +39,7 @@ def generate_keys():
     }
 
 def authenticate(workspace, key, required_roles):
-    config_ref = db.collection(workspace).document(".config")
+    config_ref = flask.g.db.collection(workspace).document(".config")
     config = config_ref.get().to_dict()
     if not config:
         flask.abort(404, "Workspace not found")
@@ -54,7 +59,7 @@ def calculate_author_id(email):
     return hashlib.sha256(email.encode() + SALT).hexdigest()
 
 def get_active_temporary_collaboration(workspace):
-    config_ref = db.collection(workspace).document(".config")
+    config_ref = flask.g.db.collection(workspace).document(".config")
     config = config_ref.get().to_dict()
     tc = config.get("temporary_collaboration") if config else None
     if tc and tc["expiry"] > time.time():
@@ -182,7 +187,7 @@ def sort_items_in_memory(items, order_by_str):
 
     return sorted(items, key=sort_key, reverse=reverse)
 
-def fetch_and_filter_items(workspace, filters=None, order_by=None):
+def fetch_and_filter_items(workspace, filters=None, order_by=None, db_id=None):
     """
     Fetch items from workspace and apply filters/sorting.
 
@@ -195,7 +200,7 @@ def fetch_and_filter_items(workspace, filters=None, order_by=None):
     try:
         # Try using Firestore indexes first
         direction = firestore.Query.ASCENDING
-        items_query = db.collection(workspace)
+        items_query = flask.g.db.collection(workspace)
         order_by_field = order_by
         if order_by_field is None:
             order_by_field = "-created_at"
@@ -230,7 +235,7 @@ def fetch_and_filter_items(workspace, filters=None, order_by=None):
                 index_url = 'https://' + msg.split('https://')[1].split(' ')[0]
 
             # Fetch all items without filtering/ordering
-            items = db.collection(workspace).stream()
+            items = flask.g.db.collection(workspace).stream()
             items = [dict(**doc.to_dict(), id=doc.id) for doc in items]
             items = [item for item in items if item['id'][0] != "."]
 
@@ -243,7 +248,7 @@ def fetch_and_filter_items(workspace, filters=None, order_by=None):
             # Trigger index creation asynchronously
             threading.Thread(
                 target=create_firestore_index,
-                args=(workspace, order_by, filters),
+                args=(workspace, order_by, filters, db_id),
                 daemon=True
             ).start()
         else:
@@ -251,7 +256,7 @@ def fetch_and_filter_items(workspace, filters=None, order_by=None):
 
     return items, use_fallback, index_url
 
-def create_firestore_index(workspace, order_by_field, filters_str):
+def create_firestore_index(workspace, order_by_field, filters_str, database_id=None):
     """
     Create a Firestore index using the Admin API.
     This should be called asynchronously to avoid blocking the request.
@@ -323,7 +328,8 @@ def create_firestore_index(workspace, order_by_field, filters_str):
             "queryScope": "COLLECTION"
         }
 
-        url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/collectionGroups/{workspace}/indexes"
+        db_segment = database_id or '(default)'
+        url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/{db_segment}/collectionGroups/{workspace}/indexes"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
@@ -342,11 +348,18 @@ def create_firestore_index(workspace, order_by_field, filters_str):
 # Endpoints
 @app.get("/taxonomy")
 def get_taxonomy():
-    taxonomy_ref = db.collection('chronomaps_global').document('taxonomy')
+    taxonomy_ref = flask.g.db.collection('chronomaps_global').document('taxonomy')
     taxonomy_doc = taxonomy_ref.get()
     if not taxonomy_doc.exists:
         return flask.jsonify({"error": "Taxonomy not yet generated"}), 404
     return flask.jsonify(taxonomy_doc.to_dict()), 200
+
+@app.get("/config")
+def get_db_config():
+    doc = flask.g.db.collection('config').document('config').get()
+    if not doc.exists:
+        return flask.jsonify({"metadata": {}}), 200
+    return flask.jsonify({"metadata": (doc.to_dict() or {}).get('metadata', {})}), 200
 
 @app.get("/all-items")
 @require_firebase_auth
@@ -356,20 +369,21 @@ def get_all_items():
     page_size = flask.request.args.get("page_size", 10, type=int)
     order_by = flask.request.args.get("order_by")
     filters = flask.request.args.get("filters", type=str)
+    db_id = flask.request.args.get("db")
 
-    cache_params = (order_by, filters)
+    cache_params = (db_id, order_by, filters)
     if _all_items_cache is not None and _all_items_cache['params'] == cache_params:
         all_items = _all_items_cache['items']
     else:
         all_items = []
-        for collection in db.collections():
+        for collection in flask.g.db.collections():
             config_ref = collection.document('.config')
             config_doc = config_ref.get()
             if not config_doc.exists:
                 continue
 
             workspace = collection.id
-            items, _, _ = fetch_and_filter_items(workspace, filters, order_by)
+            items, _, _ = fetch_and_filter_items(workspace, filters, order_by, db_id=db_id)
 
             items_metadata = [
                 sanitize_metadata(
@@ -399,7 +413,7 @@ def get_all_items():
 def list_workspaces():
     configs = []
     print("Listing workspaces for user:", flask.g.firebase_user.get("email"))
-    for collection in db.collections():
+    for collection in flask.g.db.collections():
         ref = collection.document('.config')
         if ref.get().exists:
             config = ref.get().to_dict()
@@ -417,7 +431,7 @@ def create_workspace():
     workspace_id = body.pop("workspace_id", None) or str(uuid.uuid4())
     metadata = body
     # If workspace already exists, return existing config (idempotent)
-    existing = db.collection(workspace_id).document(".config").get()
+    existing = flask.g.db.collection(workspace_id).document(".config").get()
     if existing.exists:
         config = existing.to_dict()
         return {"workspace_id": workspace_id, "config": config}, 200
@@ -427,7 +441,7 @@ def create_workspace():
         "keys": keys,
         "config": {"collaborate": False, "public": False}
     }
-    db.collection(workspace_id).document(".config").set(config)
+    flask.g.db.collection(workspace_id).document(".config").set(config)
     return {"workspace_id": workspace_id, "config": config}, 201
 
 @app.post("/<workspace>")
@@ -439,7 +453,7 @@ def create_item(workspace):
     item_id = str(uuid.uuid4())
     item_key = str(uuid.uuid4())
     item = {"key": item_key, "metadata": metadata}
-    db.collection(workspace).document(item_id).set(item)
+    flask.g.db.collection(workspace).document(item_id).set(item)
     _all_items_cache = None
     return {"item_id": item_id, "item_key": item_key}, 201
 
@@ -447,7 +461,7 @@ def create_item(workspace):
 def get_workspace(workspace):
     key = flask.request.headers.get("Authorization")
     admin = authenticate(workspace, key, ["admin", "collaborate", "view"]) >= PRIVILEGE_ADMIN
-    config_ref = db.collection(workspace).document(".config")
+    config_ref = flask.g.db.collection(workspace).document(".config")
     config = config_ref.get().to_dict()
     ret = config["metadata"]
     if admin:
@@ -478,7 +492,9 @@ def get_items(workspace):
             filters = moderation_filter
 
     # Fetch and filter items
-    items, use_fallback, index_url = fetch_and_filter_items(workspace, filters, order_by)
+    items, use_fallback, index_url = fetch_and_filter_items(
+        workspace, filters, order_by, db_id=flask.request.args.get("db")
+    )
 
     # Sanitize metadata
     items_metadata = [
@@ -522,7 +538,9 @@ def aggregate_items(workspace):
         flask.abort(400, "Missing required parameter: field")
 
     # Fetch and filter items (no ordering needed for aggregation)
-    items, use_fallback, index_url = fetch_and_filter_items(workspace, filters, order_by=None)
+    items, use_fallback, index_url = fetch_and_filter_items(
+        workspace, filters, order_by=None, db_id=flask.request.args.get("db")
+    )
 
     # Count occurrences of each field value
     counts = {}
@@ -569,7 +587,7 @@ def get_item(workspace, item_id):
     key = flask.request.headers.get("Authorization")
     item_key = flask.request.args.get("item-key")
     privilege = authenticate(workspace, key, ["admin", "collaborate", "view"])
-    item_ref = db.collection(workspace).document(item_id)
+    item_ref = flask.g.db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if not item:
         flask.abort(404, "Item not found")
@@ -593,7 +611,7 @@ def update_item(workspace, item_id):
             temp_collab = tc
     else:
         privilege = authenticate(workspace, key, ["admin", "collaborate"])
-    item_ref = db.collection(workspace).document(item_id)
+    item_ref = flask.g.db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if not item:
         flask.abort(404, "Item not found")
@@ -622,7 +640,7 @@ def delete_item(workspace, item_id):
         authenticate(workspace, key, ["admin"])
     else:
         authenticate(workspace, key, ["admin", "collaborate"])
-    item_ref = db.collection(workspace).document(item_id)
+    item_ref = flask.g.db.collection(workspace).document(item_id)
     item = item_ref.get().to_dict()
     if not item:
         flask.abort(404, "Item not found")
@@ -652,7 +670,7 @@ def update_workspace(workspace):
         updates["config.collaborate"] = collaborate
     if not updates:
         return {"message": "No updates provided"}, 400
-    db.collection(workspace).document(".config").update(updates)
+    flask.g.db.collection(workspace).document(".config").update(updates)
     return {"message": "Workspace updated", "updates": updates}, 200
 
 @app.post("/<workspace>/temporary-collaboration")
@@ -666,7 +684,7 @@ def set_temporary_collaboration(workspace):
     if time_param is None:
         flask.abort(400, "Missing required parameter: time")
 
-    config_ref = db.collection(workspace).document(".config")
+    config_ref = flask.g.db.collection(workspace).document(".config")
 
     if properties:
         expiry = time.time() + time_param
@@ -701,7 +719,7 @@ def set_temporary_collaboration(workspace):
 def delete_temporary_collaboration(workspace):
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin"])
-    config_ref = db.collection(workspace).document(".config")
+    config_ref = flask.g.db.collection(workspace).document(".config")
     config_ref.update({"temporary_collaboration": firestore.DELETE_FIELD})
     return "", 204
 
@@ -709,7 +727,7 @@ def delete_temporary_collaboration(workspace):
 def delete_workspace(workspace):
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin"])
-    workspace_ref = db.collection(workspace)
+    workspace_ref = flask.g.db.collection(workspace)
     docs = workspace_ref.stream()
     for doc in docs:
         doc.reference.delete()
@@ -719,7 +737,7 @@ def delete_workspace(workspace):
 def delete_items(workspace):
     key = flask.request.headers.get("Authorization")
     authenticate(workspace, key, ["admin"])
-    items_ref = db.collection(workspace)
+    items_ref = flask.g.db.collection(workspace)
     docs = items_ref.stream()
     for doc in docs:
         if doc.id[0] != ".":

@@ -69,8 +69,13 @@ def client():
 
 @pytest.fixture
 def mock_db():
-    """Mock Firestore database."""
-    with patch('chronomaps_api.db') as mock:
+    """Mock Firestore database.
+
+    Patches chronomaps_api.firestore.client so that the before_request hook
+    populates flask.g.db with this mock for every test request.
+    """
+    mock = Mock()
+    with patch('chronomaps_api.firestore.client', return_value=mock):
         yield mock
 
 

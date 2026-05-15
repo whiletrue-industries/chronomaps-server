@@ -19,7 +19,7 @@ import flask
 
 # Import the API module
 from chronomaps_api import (
-    app, db, authenticate, generate_keys, sanitize_metadata,
+    app, authenticate, generate_keys, sanitize_metadata,
     apply_filters_in_memory, sort_items_in_memory, calculate_author_id,
     PRIVILEGE_ADMIN, PRIVILEGE_COLLABORATE, PRIVILEGE_VIEW, PRIVILEGE_PUBLIC,
     PRIVILEGE_PRIVATE_KEY
@@ -171,20 +171,32 @@ class TestFilteringAndSorting:
 class TestAuthentication:
     """Test authentication and authorization."""
 
-    def test_authenticate_admin(self, mock_db, sample_workspace_config):
+    @pytest.fixture
+    def app_ctx_with_db(self, mock_db):
+        """Push a Flask app context and bind mock_db to flask.g.db.
+
+        authenticate() reads flask.g.db (set by the before_request hook in real
+        requests); these unit tests call authenticate() directly and need to
+        bind it manually.
+        """
+        with app.app_context():
+            flask.g.db = mock_db
+            yield mock_db
+
+    def test_authenticate_admin(self, app_ctx_with_db, sample_workspace_config):
         """Test admin authentication."""
         mock_ref = Mock()
         mock_ref.get.return_value.to_dict.return_value = sample_workspace_config
-        mock_db.collection.return_value.document.return_value = mock_ref
+        app_ctx_with_db.collection.return_value.document.return_value = mock_ref
 
         privilege = authenticate("test-workspace", sample_workspace_config["keys"]["admin"], ["admin"])
         assert privilege == PRIVILEGE_ADMIN
 
-    def test_authenticate_collaborate(self, mock_db, sample_workspace_config):
+    def test_authenticate_collaborate(self, app_ctx_with_db, sample_workspace_config):
         """Test collaborate authentication."""
         mock_ref = Mock()
         mock_ref.get.return_value.to_dict.return_value = sample_workspace_config
-        mock_db.collection.return_value.document.return_value = mock_ref
+        app_ctx_with_db.collection.return_value.document.return_value = mock_ref
 
         privilege = authenticate(
             "test-workspace",
@@ -193,11 +205,11 @@ class TestAuthentication:
         )
         assert privilege == PRIVILEGE_COLLABORATE
 
-    def test_authenticate_view(self, mock_db, sample_workspace_config):
+    def test_authenticate_view(self, app_ctx_with_db, sample_workspace_config):
         """Test view authentication."""
         mock_ref = Mock()
         mock_ref.get.return_value.to_dict.return_value = sample_workspace_config
-        mock_db.collection.return_value.document.return_value = mock_ref
+        app_ctx_with_db.collection.return_value.document.return_value = mock_ref
 
         privilege = authenticate(
             "test-workspace",
@@ -206,22 +218,22 @@ class TestAuthentication:
         )
         assert privilege == PRIVILEGE_VIEW
 
-    def test_authenticate_public(self, mock_db, sample_workspace_config):
+    def test_authenticate_public(self, app_ctx_with_db, sample_workspace_config):
         """Test public access."""
         config = sample_workspace_config.copy()
         config["config"]["public"] = True
         mock_ref = Mock()
         mock_ref.get.return_value.to_dict.return_value = config
-        mock_db.collection.return_value.document.return_value = mock_ref
+        app_ctx_with_db.collection.return_value.document.return_value = mock_ref
 
         privilege = authenticate("test-workspace", "invalid-key", ["view"])
         assert privilege == PRIVILEGE_PUBLIC
 
-    def test_authenticate_fails_invalid_key(self, mock_db, sample_workspace_config):
+    def test_authenticate_fails_invalid_key(self, app_ctx_with_db, sample_workspace_config):
         """Test authentication fails with invalid key."""
         mock_ref = Mock()
         mock_ref.get.return_value.to_dict.return_value = sample_workspace_config
-        mock_db.collection.return_value.document.return_value = mock_ref
+        app_ctx_with_db.collection.return_value.document.return_value = mock_ref
 
         with pytest.raises(Exception):  # Flask abort raises werkzeug exception
             authenticate("test-workspace", "invalid-key", ["admin"])
@@ -978,7 +990,7 @@ class TestAllItemsEndpoint:
                 {"id": "item3", "metadata": {"title": "Item 3", "created_at": "2025-01-03"}},
             ]
 
-            def mock_fetch(workspace, filters=None, order_by=None):
+            def mock_fetch(workspace, filters=None, order_by=None, db_id=None):
                 if workspace == "ws1":
                     return items_ws1, False, None
                 return items_ws2, False, None
@@ -1010,7 +1022,7 @@ class TestAllItemsEndpoint:
                 for i in range(5)
             ]
 
-            def mock_fetch(workspace, filters=None, order_by=None):
+            def mock_fetch(workspace, filters=None, order_by=None, db_id=None):
                 return items_ws1, False, None
 
             with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
@@ -1051,7 +1063,7 @@ class TestAllItemsEndpoint:
 
             captured_filters = []
 
-            def mock_fetch(workspace, filters=None, order_by=None):
+            def mock_fetch(workspace, filters=None, order_by=None, db_id=None):
                 captured_filters.append(filters)
                 return [], False, None
 
@@ -1079,7 +1091,7 @@ class TestAllItemsEndpoint:
             coll_without_config = self._make_mock_collection("ws2", [], has_config=False)
             mock_db.collections.return_value = [coll_with_config, coll_without_config]
 
-            def mock_fetch(workspace, filters=None, order_by=None):
+            def mock_fetch(workspace, filters=None, order_by=None, db_id=None):
                 return [{"id": "item1", "metadata": {"title": "Item 1", "created_at": "2025-01-01"}}], False, None
 
             with patch('chronomaps_api.fetch_and_filter_items', side_effect=mock_fetch):
@@ -1437,6 +1449,153 @@ class TestTemporaryCollaboration:
         assert response.status_code == 200
         update_call = item_ref.update.call_args[0][0]
         assert update_call["metadata"]["other_field"] == "also updated"
+
+
+class TestMultiDbRouting:
+    """Test that the `db` query param selects the Firestore database."""
+
+    def test_no_db_param_uses_default_client(self, client):
+        """Absent `db` query param → firestore.client() called with no database_id."""
+        mock = Mock()
+        with patch('chronomaps_api.firestore.client', return_value=mock) as fc:
+            # `/config` is public and only reads the config doc — easy to exercise.
+            mock.collection.return_value.document.return_value.get.return_value.exists = False
+            response = client.get("/config")
+            assert response.status_code == 200
+            # Called with no positional/keyword args (default db).
+            assert fc.call_args.args == ()
+            assert fc.call_args.kwargs == {}
+
+    def test_db_param_passes_database_id(self, client):
+        """`?db=staging` → firestore.client(database_id='staging')."""
+        mock = Mock()
+        with patch('chronomaps_api.firestore.client', return_value=mock) as fc:
+            mock.collection.return_value.document.return_value.get.return_value.exists = False
+            response = client.get("/config?db=staging")
+            assert response.status_code == 200
+            assert fc.call_args.kwargs == {"database_id": "staging"}
+
+
+class TestDbConfigEndpoint:
+    """Test the public GET /config endpoint."""
+
+    def test_returns_metadata_from_config(self, client, mock_db):
+        doc = Mock()
+        doc.exists = True
+        doc.to_dict.return_value = {
+            "key": "secret-db-key",
+            "admins": ["admin@example.com"],
+            "metadata": {"title": "Production DB", "color": "blue"},
+        }
+        mock_db.collection.return_value.document.return_value.get.return_value = doc
+
+        response = client.get("/config")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        # Only metadata is exposed.
+        assert data == {"metadata": {"title": "Production DB", "color": "blue"}}
+
+    def test_does_not_expose_key_or_admins(self, client, mock_db):
+        doc = Mock()
+        doc.exists = True
+        doc.to_dict.return_value = {
+            "key": "secret-db-key",
+            "admins": ["admin@example.com"],
+            "metadata": {"title": "Some DB"},
+        }
+        mock_db.collection.return_value.document.return_value.get.return_value = doc
+
+        response = client.get("/config")
+        body = response.data.decode()
+        assert "secret-db-key" not in body
+        assert "admin@example.com" not in body
+
+    def test_empty_metadata_when_config_doc_missing(self, client, mock_db):
+        doc = Mock()
+        doc.exists = False
+        mock_db.collection.return_value.document.return_value.get.return_value = doc
+
+        response = client.get("/config")
+        assert response.status_code == 200
+        assert json.loads(response.data) == {"metadata": {}}
+
+    def test_empty_metadata_when_metadata_field_missing(self, client, mock_db):
+        doc = Mock()
+        doc.exists = True
+        doc.to_dict.return_value = {"admins": ["a@b.com"]}
+        mock_db.collection.return_value.document.return_value.get.return_value = doc
+
+        response = client.get("/config")
+        assert response.status_code == 200
+        assert json.loads(response.data) == {"metadata": {}}
+
+    def test_no_auth_required(self, client, mock_db):
+        doc = Mock()
+        doc.exists = False
+        mock_db.collection.return_value.document.return_value.get.return_value = doc
+
+        # No Authorization header at all.
+        response = client.get("/config")
+        assert response.status_code == 200
+
+
+class TestDbKeyAuthOverride:
+    """Test that Authorization: Bearer <db-key> overrides @require_firebase_auth."""
+
+    def test_db_key_grants_access_to_protected_endpoint(self, client, mock_db):
+        """Matching bearer token against config.key bypasses Firebase verification."""
+        cfg_doc = Mock()
+        cfg_doc.exists = True
+        cfg_doc.to_dict.return_value = {"key": "the-db-key", "admins": []}
+        mock_db.collection.return_value.document.return_value.get.return_value = cfg_doc
+        # list_workspaces also iterates db.collections() — return an empty list.
+        mock_db.collections.return_value = []
+
+        # If the override works, verify_id_token must NOT be called.
+        with patch('chronomaps_api.resolve_firebase_user.verify_id_token') as mock_verify:
+            response = client.get(
+                "/",
+                headers={"Authorization": "Bearer the-db-key"},
+            )
+            assert response.status_code == 200
+            mock_verify.assert_not_called()
+
+    def test_wrong_bearer_falls_back_to_firebase_auth(self, client, mock_db):
+        """Non-matching bearer token still attempts Firebase verification and 401s on failure."""
+        cfg_doc = Mock()
+        cfg_doc.exists = True
+        cfg_doc.to_dict.return_value = {"key": "the-db-key", "admins": []}
+        mock_db.collection.return_value.document.return_value.get.return_value = cfg_doc
+
+        with patch(
+            'chronomaps_api.resolve_firebase_user.verify_id_token',
+            side_effect=Exception("invalid token"),
+        ) as mock_verify:
+            response = client.get(
+                "/",
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+            assert response.status_code == 401
+            mock_verify.assert_called_once()
+
+    def test_no_key_field_falls_back_to_firebase_auth(self, client, mock_db):
+        """When config has no `key`, the firebase path runs as today (back-compat)."""
+        cfg_doc = Mock()
+        cfg_doc.exists = True
+        cfg_doc.to_dict.return_value = {"admins": ["admin@example.com"]}
+        mock_db.collection.return_value.document.return_value.get.return_value = cfg_doc
+        mock_db.collections.return_value = []
+
+        with patch(
+            'chronomaps_api.resolve_firebase_user.verify_id_token',
+            return_value={"email": "admin@example.com", "uid": "u1"},
+        ) as mock_verify:
+            response = client.get(
+                "/",
+                headers={"Authorization": "Bearer some-firebase-id-token"},
+            )
+            assert response.status_code == 200
+            mock_verify.assert_called_once()
 
 
 if __name__ == "__main__":
