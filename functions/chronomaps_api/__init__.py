@@ -411,16 +411,13 @@ def get_all_items():
 @app.get("/")
 @require_firebase_auth
 def list_workspaces():
-    configs = []
     print("Listing workspaces for user:", flask.g.firebase_user.get("email"))
-    for collection in flask.g.db.collections():
-        ref = collection.document('.config')
-        if ref.get().exists:
-            config = ref.get().to_dict()
-            configs.append(dict(
-                id=collection.id,
-                **config
-            ))
+    config_refs = [c.document('.config') for c in flask.g.db.collections()]
+    configs = [
+        dict(id=snap.reference.parent.id, **snap.to_dict())
+        for snap in flask.g.db.get_all(config_refs)
+        if snap.exists
+    ]
     return {"workspaces": configs}, 200
 
 @app.post("/")
