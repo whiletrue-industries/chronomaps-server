@@ -298,6 +298,59 @@ class TestWorkspaceEndpoints:
             set_call = mock_ref.set.call_args[0][0]
             assert set_call["metadata"] == workspace_metadata
 
+    def test_create_workspace_with_custom_id(self, client, mock_db):
+        """Caller-supplied workspace_id drives the Firestore collection and is stripped from metadata."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "test@example.com", "uid": "test-uid"}
+
+            mock_ref = Mock()
+            mock_ref.get.return_value.exists = False
+            mock_db.collection.return_value.document.return_value = mock_ref
+
+            response = client.post(
+                "/",
+                json={"workspace_id": "my-custom-id", "title": "Custom"},
+                content_type="application/json",
+                headers={"Authorization": "Bearer test-token"}
+            )
+
+            assert response.status_code == 201
+            data = json.loads(response.data)
+            assert data["workspace_id"] == "my-custom-id"
+            mock_db.collection.assert_called_with("my-custom-id")
+
+            set_call = mock_ref.set.call_args[0][0]
+            assert "workspace_id" not in set_call["metadata"]
+            assert set_call["metadata"] == {"title": "Custom"}
+
+    def test_create_workspace_with_existing_id_is_idempotent(self, client, mock_db):
+        """Re-creating with an existing workspace_id returns 200 with the existing config and does not overwrite."""
+        with patch('chronomaps_api.resolve_firebase_user.get_firebase_user_from_token') as mock_get_user:
+            mock_get_user.return_value = {"email": "test@example.com", "uid": "test-uid"}
+
+            existing_config = {
+                "metadata": {"title": "Already Here"},
+                "keys": {"admin": "a", "collaborate": "c", "view": "v"},
+                "config": {"collaborate": False, "public": False},
+            }
+            mock_ref = Mock()
+            mock_ref.get.return_value.exists = True
+            mock_ref.get.return_value.to_dict.return_value = existing_config
+            mock_db.collection.return_value.document.return_value = mock_ref
+
+            response = client.post(
+                "/",
+                json={"workspace_id": "my-custom-id", "title": "Different"},
+                content_type="application/json",
+                headers={"Authorization": "Bearer test-token"}
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data["workspace_id"] == "my-custom-id"
+            assert data["config"] == existing_config
+            mock_ref.set.assert_not_called()
+
     def test_get_workspace(self, client, mock_db, sample_workspace_config):
         """Test getting workspace metadata."""
         mock_ref = Mock()

@@ -426,6 +426,7 @@ def list_workspaces():
 @app.post("/")
 @require_firebase_auth
 def create_workspace():
+    """Create a workspace. Pass `workspace_id` in the body to set it explicitly; otherwise a UUID4 is generated. Idempotent: re-creation with an existing ID returns the existing config."""
     print("Creating workspace for user:", flask.g.firebase_user.get("email"))
     body = flask.request.json or {}
     workspace_id = body.pop("workspace_id", None) or str(uuid.uuid4())

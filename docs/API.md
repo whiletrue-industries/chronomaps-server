@@ -174,6 +174,7 @@ POST /
 **Request Body**:
 ```json
 {
+  "workspace_id": "optional-custom-id",
   "title": "Workspace Title",
   "description": "Workspace Description",
   "event_name": "Event Name",
@@ -181,6 +182,8 @@ POST /
   ...
 }
 ```
+
+`workspace_id` is optional. When omitted, a UUID4 is generated. When supplied, it is used verbatim as the Firestore collection name for the workspace, so the caller is responsible for picking an ID that is unique and a valid Firestore collection identifier. The field is stripped from the body before the rest is persisted as `metadata`.
 
 **Response**:
 ```json
@@ -200,6 +203,8 @@ POST /
   }
 }
 ```
+
+**Idempotency**: A fresh creation returns HTTP 201. Re-posting with a `workspace_id` that already exists returns HTTP 200 with the *existing* config (keys are not re-generated and metadata is not overwritten).
 
 ---
 
