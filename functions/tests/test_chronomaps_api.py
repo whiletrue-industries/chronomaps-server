@@ -1601,8 +1601,9 @@ class TestDbKeyAuthOverride:
         cfg_doc.exists = True
         cfg_doc.to_dict.return_value = {"key": "the-db-key", "admins": []}
         mock_db.collection.return_value.document.return_value.get.return_value = cfg_doc
-        # list_workspaces also iterates db.collections() — return an empty list.
+        # list_workspaces iterates db.collections() then batch-fetches with db.get_all()
         mock_db.collections.return_value = []
+        mock_db.get_all.return_value = []
 
         # If the override works, verify_id_token must NOT be called.
         with patch('chronomaps_api.resolve_firebase_user.verify_id_token') as mock_verify:
@@ -1638,6 +1639,7 @@ class TestDbKeyAuthOverride:
         cfg_doc.to_dict.return_value = {"admins": ["admin@example.com"]}
         mock_db.collection.return_value.document.return_value.get.return_value = cfg_doc
         mock_db.collections.return_value = []
+        mock_db.get_all.return_value = []
 
         with patch(
             'chronomaps_api.resolve_firebase_user.verify_id_token',
