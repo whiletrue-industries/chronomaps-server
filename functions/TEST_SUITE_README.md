@@ -192,7 +192,7 @@ A comprehensive test suite covering all API endpoints and functionality.
 **Test Classes (test_screenshot_handler.py):**
 
 9. **TestAnalyzeImage** (4 tests)
-   - Returns analysis record from GPT-4 Vision
+   - Returns analysis record from GPT-5 Vision
    - Automatic mode
    - Automatic mode with existing metadata context
    - Handles empty GPT response

@@ -52,8 +52,22 @@ The `content` field should include specific details about the screenshot's conte
 - For a **sign in a demonstration**, describe the text and imagery on the sign, including any symbols or graphics.
 
 After reading all the data, try to capture the essence of the future that the participant is envisioning, and in which this screenshot is set.
-Describe this speculative future in a few sentences, focusing on the key themes, technologies, or societal changes that are implied by the content of the screenshot.
-This description should describe the future scenario, without referencing the specific content of the screenshot. 
+Describe this speculative future in a few sentences, focusing on the key themes, anxieties, hopes, or societal changes that are implied by the content of the screenshot.
+This description should describe the future scenario, without referencing the specific content of the screenshot.
+
+### Content-over-template guidance for the `future_scenario_*` fields and `content_title`
+
+The template (social media post, AI agent query, notification, review, sign, etc.) is just the **wrapper** the participant chose to express their idea. The summary, tagline, description, and topics must describe what the scenario is **about** — the substantive concern the participant is voicing — **not** the medium they used to voice it.
+
+- If someone asks an AI assistant "How do I get my son out of military service?", the scenario is about military service / conscientious objection / state coercion, **not** about AI. Mention AI only if the *role of the AI itself* is the substantive concern (e.g., AI replacing rabbinic authority, AI deciding immigration cases, AI deepfakes destroying trust).
+- If someone posts on social media about a checkpoint, the scenario is about checkpoints and freedom of movement, **not** about social media.
+- If a notification announces a ceasefire, the scenario is about the ceasefire and what it changes, **not** about notification systems.
+- A review of a peace-process app is about whatever the app is doing in the imagined future (e.g., reconciliation infrastructure), **not** about apps or reviews.
+
+When choosing `future_scenario_topics`, prefer specific, content-grounded topics ("checkpoint freedom of movement", "Jewish-diaspora-Israel ties", "settler violence", "religion and the state", "climate displacement", "right of return") over generic placeholders like "AI", "social media", "technology", "politics", or "society" — unless one of those generic terms is genuinely the substance of the scenario.
+
+The Israeli-Palestinian region, Israeli politics and society, and Jewish identity are recurring substantive concerns in this dataset; when they are present in the content, surface them specifically rather than abstracting them away.
+
 The summary and analysis should be returned in the JSON format specified above, under the `future_scenario*` fields.
 
 Here's the file for your analysis - remember to reply only the JSON object only, without any additional text, explanation or embellishments.

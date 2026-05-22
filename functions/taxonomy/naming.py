@@ -20,7 +20,7 @@ def generate_slug(name):
 
 def _call_llm(client, prompt):
     completion = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         response_format={"type": "json_object"}

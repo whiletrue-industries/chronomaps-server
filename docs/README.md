@@ -8,7 +8,7 @@ This directory contains comprehensive documentation for the Chronomaps Server AP
 
 ## Overview
 
-Chronomaps Server is a Firebase Cloud Functions-based backend for managing collaborative workspaces that collect and process future scenario screenshots. The system uses AI-powered analysis (GPT-4.1 Vision) to extract structured information from screenshots and provides ML-based clustering and visualization capabilities.
+Chronomaps Server is a Firebase Cloud Functions-based backend for managing collaborative workspaces that collect and process future scenario screenshots. The system uses AI-powered analysis (GPT-5 Vision) to extract structured information from screenshots and provides ML-based clustering and visualization capabilities.
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 
 - Multi-tenant workspace architecture
 - Fine-grained access control (5-level privilege system)
-- AI-powered screenshot analysis using GPT-4.1 Vision
+- AI-powered screenshot analysis using GPT-5 Vision
 - Modular image operations (replace image, re-analyze item)
 - Interactive chat agent for guided item completion
 - ML clustering (t-SNE + Agglomerative Clustering)
@@ -33,7 +33,7 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 
 - Python 3.12 + Flask
 - Firebase (Functions, Firestore, Storage, Auth)
-- OpenAI GPT-4.1
+- OpenAI GPT-5
 - scikit-learn for ML clustering
 
 ## Documentation Structure
