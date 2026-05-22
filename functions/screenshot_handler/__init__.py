@@ -120,7 +120,7 @@ Consider them as truth (overriding any text you might extract from the image), u
  """ + json.dumps(user_metadata, indent=2)
 
     completion = client.chat.completions.create(
-        model="gpt-5",
+        model="gpt-5.4",
         messages=[
             {
                 "role": "user",

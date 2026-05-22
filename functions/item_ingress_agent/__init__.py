@@ -51,7 +51,7 @@ def get_assistant_id(client, workspace, workspace_metadata):
     if _assistant_id is None:
         _assistant_id = client.beta.assistants.create(
             name=agent_name,
-            model="gpt-5",
+            model="gpt-4.1",
             description="Chronomaps Item Ingress Agent",
             instructions=instructions,
             tools=TOOLS,
