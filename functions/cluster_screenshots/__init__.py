@@ -91,7 +91,7 @@ def extract_cluster_title(client, taglines, previous=None):
     prompt = EXTRACT_TITLE_INSTRUCTIONS.replace(':TAGLINES:', taglines).replace(':PREVIOUS:', previous)
 
     completion = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5.4",
         messages=[
             {
                 "role": "user",
@@ -100,7 +100,6 @@ def extract_cluster_title(client, taglines, previous=None):
                 ],
             }
         ],
-        temperature=0.5,
         response_format={
             "type": 'json_object'
         }

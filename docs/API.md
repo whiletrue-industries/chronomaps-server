@@ -10,7 +10,7 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 - **Cloud Platform**: Firebase Functions (Google Cloud Functions)
 - **Database**: Firebase Firestore
 - **Storage**: Firebase Storage
-- **AI/ML**: OpenAI GPT-4.1, scikit-learn, NumPy
+- **AI/ML**: OpenAI GPT-5.4, scikit-learn, NumPy
 - **Deployment Region**: europe-west4
 
 ---
@@ -631,7 +631,7 @@ POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>
 
 **Request Body**: Image file
 
-**Description**: Analyzes screenshot using GPT-4.1 Vision model to extract structured information including screenshot type, content, future scenario details, and more. Always creates a new item. After creation, automatically generates the item's semantic embedding and assigns taxonomy topics (if a taxonomy exists). To update an existing item's image or re-analyze it, use the `replace_image` or `reanalyze_item` endpoints instead.
+**Description**: Analyzes screenshot using GPT-5.4 Vision model to extract structured information including screenshot type, content, future scenario details, and more. Always creates a new item. After creation, automatically generates the item's semantic embedding and assigns taxonomy topics (if a taxonomy exists). To update an existing item's image or re-analyze it, use the `replace_image` or `reanalyze_item` endpoints instead.
 
 **Response**:
 ```json
@@ -706,7 +706,7 @@ POST /reanalyze_item?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>&au
 - `item_key` (required): Item key for authorization
 - `automatic` (optional, default: false): Use automatic analysis mode. When true, existing metadata is passed to the AI as context.
 
-**Description**: Re-runs GPT-4.1 Vision analysis on an existing item using its stored image from Firebase Storage. Does not upload a new image. The item's metadata is replaced with new analysis results while preserving the existing `screenshot_url`. After re-analysis, automatically regenerates the item's semantic embedding and re-assigns taxonomy topics. Useful for re-processing items after prompt improvements or when analysis quality needs improvement.
+**Description**: Re-runs GPT-5.4 Vision analysis on an existing item using its stored image from Firebase Storage. Does not upload a new image. The item's metadata is replaced with new analysis results while preserving the existing `screenshot_url`. After re-analysis, automatically regenerates the item's semantic embedding and re-assigns taxonomy topics. Useful for re-processing items after prompt improvements or when analysis quality needs improvement.
 
 **Response**:
 ```json
@@ -816,7 +816,7 @@ POST /cluster_screenshots?config=<config>&tag=<tag>&no_title=<bool>
 - `tag`: Tag for the cluster set
 - `no_title` (optional): Skip title generation
 
-**Description**: ML-powered screenshot clustering and visualization using t-SNE dimensionality reduction and agglomerative clustering. Generates map tiles (256x256px) for zoom levels and extracts cluster themes using GPT-4.1.
+**Description**: ML-powered screenshot clustering and visualization using t-SNE dimensionality reduction and agglomerative clustering. Generates map tiles (256x256px) for zoom levels and extracts cluster themes using GPT-5.4.
 
 **Stream Events**:
 ```
@@ -851,9 +851,9 @@ POST /build_taxonomy?similarity_threshold=<float>&max_tags=<int>&redesign=<bool>
 **Query Parameters**:
 - `similarity_threshold` (default: 0.35): Minimum cosine similarity for assigning additional (non-primary) tags to an item
 - `max_tags` (default: 3): Maximum number of topic tags per item
-- `redesign` (default: false): When false, reuses the existing taxonomy and only re-assigns items. When true, samples descriptions and asks GPT-4.1 to refine the taxonomy (keeping existing theme names stable where possible).
+- `redesign` (default: false): When false, reuses the existing taxonomy and only re-assigns items. When true, samples descriptions and asks GPT-5.4 to refine the taxonomy (keeping existing theme names stable where possible).
 
-**Description**: Builds a cross-workspace hierarchical taxonomy. GPT-4.1 designs the taxonomy top-down from a representative sample of item descriptions, producing mutually exclusive themes and sub-themes with names in four languages (English, Dutch, Hebrew, Arabic). Reference embeddings are generated for each sub-theme definition and cached in Firestore for use by the `tag_item` endpoint.
+**Description**: Builds a cross-workspace hierarchical taxonomy. GPT-5.4 designs the taxonomy top-down from a representative sample of item descriptions, producing mutually exclusive themes and sub-themes with names in four languages (English, Dutch, Hebrew, Arabic). Reference embeddings are generated for each sub-theme definition and cached in Firestore for use by the `tag_item` endpoint.
 
 Each item receives multi-label topic tags stored in `metadata.topics`. The full taxonomy reference is saved to the `chronomaps_global/taxonomy` Firestore document and can be retrieved via `GET /taxonomy`.
 
@@ -1216,7 +1216,7 @@ All endpoints return appropriate HTTP status codes with error messages:
 
 Required secrets for Firebase Cloud Functions:
 
-- `OPENAI_API_KEY` - OpenAI API key for GPT-4 operations
+- `OPENAI_API_KEY` - OpenAI API key for GPT-5.4 operations
 - `CHRONOMAPS_API_URL` - Base URL for the Chronomaps API
 - `SERVICE_ACCOUNT_JSON` - Firebase service account credentials
 - `CONFIG__ITS_TIME` - Configuration for scheduled clustering job
