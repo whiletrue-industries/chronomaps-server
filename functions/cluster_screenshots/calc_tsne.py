@@ -112,7 +112,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
     filename = None
     if record is not None:
         filename = record.get('screenshot_url')
-    if filename is not None
+    if filename is not None:
         filename = _normalize_url(filename)
         rotate = record.get('plausibility') if isinstance(record.get('plausibility'), int) else 100
         rotate = int(rotate)
