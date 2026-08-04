@@ -14,6 +14,8 @@ def use_item(item, favorable_future_required=True):
             return False
     if 'future_scenario_description' not in item or not item['future_scenario_description']:
         return False
+    if item.get('created_at') is None:
+        return False
     return True
 
 
