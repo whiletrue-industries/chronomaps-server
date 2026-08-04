@@ -135,7 +135,7 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         filename = None
         rotate = (521 * pos_x + 967 * pos_y) % 64 - 32   # Pseudo-random rotation
     inner_target_size = int(target_size[0] / params.CELL_RATIOS[0]), int(target_size[1] / params.CELL_RATIOS[1])
-    if not filename:
+    if not filename or (not params.LOCAL and not filename.startswith('http')):
         filename = Path(__file__).with_name('empty-space.png')
         img = Image.open(filename)
         _image = Image.new("RGBA", img.size, "WHITE") 
@@ -231,6 +231,8 @@ def create_tsne_image(grid_jv, records, out_dim, res, offset, padding, pos_offse
             pos = (pos_y, pos_x)
             record = positions.get(pos)
             img, metadata, to_save = get_image(record, res, pos_x, pos_y, params)
+            if img is None:
+                continue
             if to_save is not None:
                 yield dict(action='save_image', image=to_save[0], path=to_save[1], metadata=metadata)
             if callable(offset_x):
