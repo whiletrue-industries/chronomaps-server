@@ -109,8 +109,10 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
     # Open the image size, resize it to the target size (maintaining aspect ratio) and return a cropped image of the target size out the center
     metadata = dict()
     to_save = None
+    filename = None
     if record is not None:
         filename = record.get('screenshot_url')
+    if filename is not None
         filename = _normalize_url(filename)
         rotate = record.get('plausibility') if isinstance(record.get('plausibility'), int) else 100
         rotate = int(rotate)
@@ -132,7 +134,6 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
             url=filename
         )
     else:
-        filename = None
         rotate = (521 * pos_x + 967 * pos_y) % 64 - 32   # Pseudo-random rotation
     inner_target_size = int(target_size[0] / params.CELL_RATIOS[0]), int(target_size[1] / params.CELL_RATIOS[1])
     if not filename or (not params.LOCAL and not filename.startswith('http')):
