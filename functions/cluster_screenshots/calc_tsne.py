@@ -310,6 +310,7 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
 
     yield dict(msg=f'Generating 2D representation from {len(records)} records.')
     X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
+    params.fit_grid_to_records(len(records))
     yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
     grid = calc_tsne_grid(X_2d, params.OUT_DIM)
     grid = grid[:len(records)]
@@ -365,7 +366,7 @@ if __name__ == '__main__':
 
     params = TSNEParams(
         OUT_RATIO = 25/43,
-        OUT_DIM_X = 32,
+        MAX_TO_PLOT = 460,
         CHRONOMAPS_API_URL='https://chronomaps-api-qjzuw7ypfq-ez.a.run.app',
         OPENAI_KEY=os.environ.get('OPENAI_KEY'),
         LOCAL= True,
