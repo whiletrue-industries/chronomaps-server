@@ -69,7 +69,7 @@ Authorization: Bearer <firebase-token>
 ```
 Authorization: Bearer <db-key>
 ```
-When the target database's `config/config` document defines a `key`, that value can be sent as a bearer token in place of a Firebase ID token on any endpoint that normally requires Firebase auth (`GET /`, `POST /`, `GET /all-items`, `POST /build_taxonomy`). The override is per-database — each db has its own `key`. Configure or rotate it by writing to `config/config` in that db.
+When the target database's `config/config` document defines a `key`, that value can be sent as a bearer token in place of a Firebase ID token on any endpoint that normally requires Firebase auth (`GET /`, `POST /`, `GET /all-items`, `PUT /global/<key>`, `POST /build_taxonomy`). The override is per-database — each db has its own `key`. Configure or rotate it by writing to `config/config` in that db.
 
 ### Workspace Keys
 
@@ -136,6 +136,57 @@ GET /config
 ```
 
 If the `config/config` document does not exist, or has no `metadata` field, the endpoint returns `{"metadata": {}}` with status 200.
+
+---
+
+### Global Key-Value Store
+
+A per-database key-value store. Values are scoped to the target database (selected with `?db=`), not to a workspace. Admins write; anyone can read.
+
+#### Set Global Key
+
+```http
+PUT /global/<key>
+POST /global/<key>
+Authorization: Bearer <firebase-token | db-key>
+Content-Type: application/json
+
+<any JSON value>
+```
+
+**Authentication**: Firebase Bearer Token (admin users only) or the database bearer key
+
+**Description**: Stores the request body as the value for `<key>` in the target database, overwriting any previous value. The body must be valid JSON and may be any JSON type (object, array, string, number, boolean, `null`). The value is persisted as a JSON-encoded string in the `global_keys/<key>` document, along with `updated_at` and `updated_by`.
+
+Keys are URL path segments: non-empty, no `/`, at most 1500 bytes, and not of the form `__name__`.
+
+**Response** (200):
+```json
+{
+  "key": "featured_workspace",
+  "value": {"id": "abc123", "title": "Spring 2026"},
+  "updated_at": "2026-08-21T10:00:00+00:00"
+}
+```
+
+**Errors**: `400` invalid key or non-JSON body, `401` not authenticated / not an admin.
+
+#### Read Global Key
+
+```http
+GET /global/<key>
+```
+
+**Authentication**: None (public endpoint)
+
+**Description**: Returns the stored JSON value for `<key>` as the response body (`Content-Type: application/json`). The body is the value itself, not wrapped in an envelope.
+
+**Response** (200):
+```json
+{"id": "abc123", "title": "Spring 2026"}
+```
+
+**Errors**: `404` if the key has not been set in this database.
 
 ---
 
@@ -1164,7 +1215,12 @@ Firebase Storage bucket: `chronomaps3-eu`
    - `key` (string, optional): bearer-token override for Firebase-auth endpoints (see [Authorization Methods](#authorization-methods))
    - `metadata` (object, optional): public, human-readable metadata returned by [`GET /config`](#get-database-metadata)
 
-4. **`chronomaps_global`** - Cross-workspace data
+4. **`global_keys`** - Per-database public key-value store (see [Global Key-Value Store](#global-key-value-store)). One document per key:
+   - `value` (string): the JSON-encoded value
+   - `updated_at` (string): ISO timestamp of the last write
+   - `updated_by` (string): email of the admin who wrote it (or `db-key`)
+
+5. **`chronomaps_global`** - Cross-workspace data
    - `taxonomy` document - Hierarchical taxonomy reference (see [Taxonomy Document](#taxonomy-document))
    - `embedding-<hash>` documents - Cached reference embeddings for taxonomy sub-themes
 

@@ -361,6 +361,46 @@ def get_db_config():
         return flask.jsonify({"metadata": {}}), 200
     return flask.jsonify({"metadata": (doc.to_dict() or {}).get('metadata', {})}), 200
 
+# Per-database global key-value store.
+# Documents live in the `global_keys` collection of the target db, one per key:
+#   { "value": <JSON-encoded string>, "updated_at": <iso>, "updated_by": <email> }
+GLOBAL_KEYS_COLLECTION = 'global_keys'
+
+def _validate_global_key(key):
+    if not key or len(key.encode('utf-8')) > 1500 or key in ('.', '..') or (key.startswith('__') and key.endswith('__')):
+        flask.abort(400, "Invalid key")
+
+@app.put("/global/<key>")
+@app.post("/global/<key>")
+@require_firebase_auth
+def set_global_key(key):
+    """Set a db-wide key. Body is the JSON value to store (any JSON type)."""
+    _validate_global_key(key)
+    raw = flask.request.get_data(as_text=True)
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        flask.abort(400, "Request body must be valid JSON")
+    updated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    flask.g.db.collection(GLOBAL_KEYS_COLLECTION).document(key).set({
+        "value": json.dumps(value, ensure_ascii=False),
+        "updated_at": updated_at,
+        "updated_by": flask.g.firebase_user.get("email"),
+    })
+    return {"key": key, "value": value, "updated_at": updated_at}, 200
+
+@app.get("/global/<key>")
+def read_global_key(key):
+    """Read a db-wide key. Public. Returns the stored JSON value as the response body."""
+    _validate_global_key(key)
+    doc = flask.g.db.collection(GLOBAL_KEYS_COLLECTION).document(key).get()
+    if not doc.exists:
+        return flask.jsonify({"error": "Key not found"}), 404
+    stored = (doc.to_dict() or {}).get("value")
+    if not isinstance(stored, str):
+        return flask.jsonify({"error": "Key not found"}), 404
+    return app.response_class(stored, status=200, mimetype='application/json')
+
 @app.get("/all-items")
 @require_firebase_auth
 def get_all_items():
