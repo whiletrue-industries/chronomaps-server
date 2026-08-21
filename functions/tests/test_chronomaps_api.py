@@ -1653,5 +1653,133 @@ class TestDbKeyAuthOverride:
             mock_verify.assert_called_once()
 
 
+class TestGlobalKeys:
+    """Test the per-db global key-value store: PUT/POST /global/<key> (admin) and GET /global/<key> (public)."""
+
+    def _setup(self, mock_db, stored=None, exists=True):
+        """Route `config/config` to a db-key config doc and `global_keys/<k>` to a key doc."""
+        cfg_doc = Mock()
+        cfg_doc.exists = True
+        cfg_doc.to_dict.return_value = {"key": "the-db-key", "admins": []}
+        cfg_ref = Mock()
+        cfg_ref.get.return_value = cfg_doc
+
+        key_doc = Mock()
+        key_doc.exists = exists
+        key_doc.to_dict.return_value = stored
+        key_ref = Mock()
+        key_ref.get.return_value = key_doc
+
+        def collection_side_effect(name):
+            coll = Mock()
+            coll.document.return_value = cfg_ref if name == "config" else key_ref
+            return coll
+        mock_db.collection.side_effect = collection_side_effect
+        return key_ref
+
+    def test_set_stores_json_string(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        value = {"hello": "world", "n": [1, 2, 3]}
+        response = client.put(
+            "/global/my-key",
+            headers={"Authorization": "Bearer the-db-key"},
+            json=value,
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["key"] == "my-key"
+        assert data["value"] == value
+        assert "updated_at" in data
+
+        key_ref.set.assert_called_once()
+        written = key_ref.set.call_args[0][0]
+        assert isinstance(written["value"], str)
+        assert json.loads(written["value"]) == value
+        assert written["updated_by"] == "db-key"
+        assert "updated_at" in written
+
+    def test_set_via_post(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        response = client.post(
+            "/global/k",
+            headers={"Authorization": "Bearer the-db-key"},
+            json="just a string",
+        )
+        assert response.status_code == 200
+        assert json.loads(key_ref.set.call_args[0][0]["value"]) == "just a string"
+
+    def test_set_requires_auth(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        response = client.put("/global/my-key", json={"a": 1})
+        assert response.status_code == 401
+        key_ref.set.assert_not_called()
+
+    def test_set_rejects_wrong_token(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        with patch('chronomaps_api.resolve_firebase_user.verify_id_token', side_effect=Exception("bad")):
+            response = client.put(
+                "/global/my-key",
+                headers={"Authorization": "Bearer nope"},
+                json={"a": 1},
+            )
+        assert response.status_code == 401
+        key_ref.set.assert_not_called()
+
+    def test_set_rejects_invalid_json_body(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        response = client.put(
+            "/global/my-key",
+            headers={"Authorization": "Bearer the-db-key"},
+            data="not json {",
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        key_ref.set.assert_not_called()
+
+    def test_set_rejects_invalid_key(self, client, mock_db):
+        key_ref = self._setup(mock_db)
+        response = client.put(
+            "/global/__reserved__",
+            headers={"Authorization": "Bearer the-db-key"},
+            json=1,
+        )
+        assert response.status_code == 400
+        key_ref.set.assert_not_called()
+
+    def test_read_returns_value_publicly(self, client, mock_db):
+        value = {"hello": "world", "n": [1, 2, 3]}
+        self._setup(mock_db, stored={"value": json.dumps(value), "updated_at": "x", "updated_by": "y"})
+        # No Authorization header.
+        response = client.get("/global/my-key")
+        assert response.status_code == 200
+        assert response.mimetype == "application/json"
+        assert json.loads(response.data) == value
+
+    def test_read_scalar_value(self, client, mock_db):
+        self._setup(mock_db, stored={"value": json.dumps(42)})
+        response = client.get("/global/answer")
+        assert response.status_code == 200
+        assert json.loads(response.data) == 42
+
+    def test_read_missing_key_404(self, client, mock_db):
+        self._setup(mock_db, stored=None, exists=False)
+        response = client.get("/global/nope")
+        assert response.status_code == 404
+
+    def test_read_uses_global_keys_collection(self, client, mock_db):
+        self._setup(mock_db, stored={"value": "null"})
+        client.get("/global/some-key")
+        mock_db.collection.assert_any_call("global_keys")
+
+    def test_read_honors_db_param(self, client):
+        mock = Mock()
+        doc = Mock()
+        doc.exists = False
+        mock.collection.return_value.document.return_value.get.return_value = doc
+        with patch('chronomaps_api.firestore.client', return_value=mock) as client_factory:
+            client.get("/global/k?db=staging")
+            client_factory.assert_called_with(database_id="staging")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
