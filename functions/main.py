@@ -243,7 +243,7 @@ DROPBOX_INGEST_SECRETS = [
     'DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET', 'DROPBOX_REFRESH_TOKEN',
 ]
 
-def _run_dropbox_ingest(dry_run=False, only_folder=None):
+def _run_dropbox_ingest(dry_run=False, only_folder=None, full_sweep=False):
     """Run the ingest under the shared lock, printing each status line."""
     from dropbox_ingest import run_ingest as run_ingest_fn
     from dropbox_ingest import lock as ingest_lock
@@ -255,7 +255,7 @@ def _run_dropbox_ingest(dry_run=False, only_folder=None):
         return [bit]
     bits = []
     try:
-        for bit in run_ingest_fn(dry_run=dry_run, only_folder=only_folder):
+        for bit in run_ingest_fn(dry_run=dry_run, only_folder=only_folder, full_sweep=full_sweep):
             print(json.dumps(bit, ensure_ascii=False))
             bits.append(bit)
     finally:
@@ -273,5 +273,7 @@ def dropbox_ingest(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("Unauthorized", status=401)
     dry_run = req.args.get('dry_run', 'false').lower() == 'true'
     only_folder = req.args.get('folder')
-    bits = _run_dropbox_ingest(dry_run=dry_run, only_folder=only_folder)
+    # `full=true` ignores the stored cursor and visits every folder.
+    full_sweep = req.args.get('full', 'false').lower() == 'true'
+    bits = _run_dropbox_ingest(dry_run=dry_run, only_folder=only_folder, full_sweep=full_sweep)
     return https_fn.Response(json.dumps(bits, ensure_ascii=False), status=200, mimetype='application/json')

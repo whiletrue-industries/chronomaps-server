@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'functions'))
 
 from dropbox_ingest import ConfigurationError, load_settings, run_ingest  # noqa: E402
+from dropbox_ingest import delta  # noqa: E402
 from dropbox_ingest.dropbox_api import DropboxError  # noqa: E402
 
 
@@ -57,7 +58,12 @@ def main():
 
     counts = {}
     try:
-        for bit in run_ingest(settings=settings, dry_run=args.dry_run, only_folder=args.folder):
+        # A local run keeps its own tracker: sharing the deployed function's
+        # cursor would make the scheduler skip changes this run consumed, and
+        # would need Firebase credentials here. Every CLI run therefore visits
+        # every folder, which is what you want from a manual run anyway.
+        for bit in run_ingest(settings=settings, dry_run=args.dry_run, only_folder=args.folder,
+                              tracker=delta.MemoryTracker()):
             counts[bit.get('action')] = counts.get(bit.get('action'), 0) + 1
             print(json.dumps(bit, ensure_ascii=False) if args.json else format_line(bit))
     except (DropboxError, ConfigurationError) as e:
@@ -73,6 +79,12 @@ def format_line(bit):
     folder = bit.get('folder', '')
     if action == 'start':
         return f"→ root {bit['root']}, cutoff {bit['cutoff']}{' (DRY RUN)' if bit['dry_run'] else ''}"
+    if action == 'delta':
+        return f"→ {bit['changed_entries']} changed entries, {bit['dirty']} folder(s) to visit"
+    if action == 'full-sweep':
+        return f"→ full sweep ({bit['reason']}): {bit['folders']} folders"
+    if action == 'forgotten':
+        return f"   gone  {folder}: {bit['reason']}"
     if action == 'skip-folder':
         return f"   skip  {folder}: {bit['reason']}"
     if action == 'folder':
@@ -105,7 +117,10 @@ def format_line(bit):
     if action == 'folder-done':
         return f"   done  {folder}: {bit['uploaded']} processed"
     if action == 'done':
-        return f"→ finished, {bit['folders']} folders considered"
+        line = f"→ finished, {bit['folders']} folders considered"
+        if bit.get('still_dirty'):
+            line += f", {bit['still_dirty']} still pending for the next run"
+        return line
     return json.dumps(bit, ensure_ascii=False)
 
 
