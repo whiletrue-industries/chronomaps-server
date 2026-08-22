@@ -1014,6 +1014,126 @@ This endpoint is also called automatically by `screenshot_handler` and `reanalyz
 
 ---
 
+## Dropbox Auto-Ingest
+
+Scanned pages that land in a Dropbox folder are ingested automatically: cropped to the expected page
+proportions, uploaded through `screenshot_handler` in automatic mode, and tagged so all pages from a
+single scan batch share one `author_id`.
+
+### How a folder is picked up
+
+The ingest lists the immediate subfolders of `DROPBOX_ROOT_PATH`. A subfolder is ingested only if:
+
+1. It contains a **credentials file** at its root — `chronomaps.config`, `.chronomaps.config` or
+   `chronomaps.txt` (first match wins), and
+2. It was **created after `DROPBOX_FOLDER_CUTOFF`** (default `2026-08-20T00:00:00Z`). Dropbox exposes
+   no folder creation time, so the oldest `server_modified` in the folder is used as the proxy. Set
+   `ignore_cutoff: true` in the credentials file to backfill an older folder deliberately.
+
+Images are collected recursively below the folder (`.jpg`, `.jpeg`, `.png`).
+
+### Credentials file
+
+JSON, or simple `key: value` lines (`#` comments allowed):
+
+```
+workspace: 0a698fad-7e49-428f-bceb-c9d51b3512e1
+api_key: <collaborate or admin key>
+
+# optional
+enabled: true               # false disables the folder without deleting the file
+ignore_cutoff: false        # true ingests a folder created before the cutoff
+batch_gap_seconds: 120      # a longer gap between scans starts a new author batch
+ratio: 0.53                 # target width/height
+ratio_tolerance: 0.10       # images further off than this are skipped
+max_uploads_per_run: 50     # remaining images are picked up on the next run
+time_source: auto           # auto | client | server — which Dropbox timestamp is "scan time"
+rotate_landscape: off       # off | cw | ccw — rescue landscape scans by rotating them
+```
+
+### State file
+
+`chronomaps.state.json` is written next to the credentials file and is what prevents re-uploads:
+
+```json
+{
+  "version": 1,
+  "workspace": "<workspace-id>",
+  "files":   {"<dropbox content_hash>": {"path": "...", "item_id": "...", "author_id": "...",
+                                          "scanned_at": "...", "uploaded_at": "..."}},
+  "skipped": {"<dropbox content_hash>": {"path": "...", "reason": "aspect ratio ...", "at": "..."}},
+  "failed":  {"<dropbox content_hash>": {"path": "...", "error": "...", "attempts": 1, "at": "..."}},
+  "recent_batches": [{"author_id": "<uuid4>", "first_scanned_at": "...", "last_scanned_at": "..."}]
+}
+```
+
+- Dedup is keyed on Dropbox's own `content_hash`, so a re-uploaded or moved copy of the same bytes is
+  recognised without downloading it. Two copies of the same bytes in one folder (a Dropbox
+  "conflicted copy") upload once.
+- A `files` entry with a `metadata_error` means the item was created but its `author_id` could not be
+  attached. It is deliberately not retried — retrying would create a second item — so fix it by
+  PUTting the metadata onto the recorded `item_id`.
+- `failed` entries are retried on later runs and quarantined after 3 attempts; a quarantined file is
+  reported (`action: quarantined`) on every subsequent run. Delete the entry to force a retry.
+- Deleting the whole file causes the folder to be ingested again from scratch.
+
+### Batching and `author_id`
+
+Scans are ordered by **scan time** (`client_modified`, falling back to `server_modified`). A gap
+longer than `batch_gap_seconds` starts a new batch, and each batch gets one `uuid4` `author_id` that
+is written to every item in it. The last 10 batches are kept in `recent_batches` with their scan
+windows, so a page that syncs an hour late rejoins *its own* batch rather than whichever one was
+processed most recently. Files that reached Dropbox less than `DROPBOX_SETTLE_SECONDS` ago (default
+180) are left for the next run so a batch mid-sync is not split.
+
+### Image preprocessing
+
+Images are centre-cropped to `ratio` (0.53 width:height, matching the scanner UI) and rejected —
+recorded under `skipped` — when the ratio is further than `ratio_tolerance` from the target, when the
+shortest side is under 300px, or when the file is unreadable or over 30MB. Accepted images are fit
+into 2120x4000 and re-encoded as JPEG q85, the same preprocessing the batch uploader uses. Contrast
+and white balance are left to the existing `enhance_image` step.
+
+### Upload path
+
+Per image, identical to the app's automatic mode:
+
+```http
+POST {SCREENSHOT_HANDLER_URL}?workspace=<id>&api_key=<key>&automatic=true
+Content-Type: multipart/form-data     (field: image)
+
+PUT {CHRONOMAPS_API_URL}/<workspace>/<item_id>?item-key=<item_key>
+Authorization: <api_key>
+
+{"author_id": "<batch uuid4>", "source": "dropbox", "dropbox_path": "...",
+ "dropbox_content_hash": "...", "scanned_at": "..."}
+```
+
+Bookkeeping metadata goes in the `PUT`, never in the handler's `metadata` form field — that field is
+fed to the vision model as user-provided truth.
+
+### Triggers
+
+```http
+POST /dropbox_ingest?dry_run=<bool>&folder=<folder-name>
+Authorization: Bearer <firebase-token>
+```
+
+**Authentication**: Firebase admin token (`shared.verify_firebase_admin`)
+
+**Description**: Runs the ingest immediately. `dry_run=true` reports what would be uploaded without
+uploading anything or writing state files; `folder` limits the run to one workspace folder. Returns
+the array of per-step status objects.
+
+`dropbox_ingest_scheduled` runs the same flow every 5 minutes. Both take a Firestore lock
+(`chronomaps_global/dropbox_ingest_lock`) so two runs never ingest concurrently, and both stop
+starting new work after `DROPBOX_RUN_DEADLINE_SECONDS` (default 1500) so an interrupted chunk cannot
+be re-uploaded by the next run.
+
+Locally, the same code path runs via `python dropbox_ingest_cli.py --dry-run [--folder NAME]`.
+
+---
+
 ## Data Models
 
 ### Workspace Configuration
@@ -1276,6 +1396,44 @@ Required secrets for Firebase Cloud Functions:
 - `CHRONOMAPS_API_URL` - Base URL for the Chronomaps API
 - `SERVICE_ACCOUNT_JSON` - Firebase service account credentials
 - `CONFIG__ITS_TIME` - Configuration for scheduled clustering job
+
+Required for the Dropbox auto-ingest — **secrets** (Secret Manager, set with
+`firebase functions:secrets:set`):
+
+- `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` - Dropbox scoped app credentials
+- `DROPBOX_REFRESH_TOKEN` - Long-lived token (mint it with `scripts/dropbox_authorize.py`)
+
+And **non-secret configuration**, kept in `functions/.env.chronomaps3` so deploys from CI need no
+manual setup:
+
+- `DROPBOX_ROOT_PATH` - Folder holding the per-workspace subfolders
+- `DROPBOX_FOLDER_CUTOFF` - ISO timestamp; folders older than this are ignored
+- `DROPBOX_NAMESPACE_ID` - Only for a Dropbox Business team space (`scripts/dropbox_check.py`
+  prints the value when it is needed)
+- `DROPBOX_SETTLE_SECONDS` - Optional; how long a file must be settled before ingest (default 180)
+- `DROPBOX_RUN_DEADLINE_SECONDS` - Optional; stop starting work after this long (default 1500)
+- `SCREENSHOT_HANDLER_URL` - Optional; derived from `CHRONOMAPS_API_URL` when both follow the
+  standard naming, required otherwise
+
+### First-time setup
+
+1. Create a **scoped** app at https://www.dropbox.com/developers/apps with **Full Dropbox** access
+   (an *App folder* app can never see a folder that already exists elsewhere).
+2. On its *Permissions* tab enable `account_info.read`, `files.metadata.read`, `files.content.read`
+   and `files.content.write`, then Submit — before minting any token, or the token will not carry
+   the scopes.
+3. On its *Settings* tab set **Access token expiration: Short-lived**, leave **Redirect URIs empty**
+   (the setup script uses the copy-the-code flow) and leave *Allow public clients* disallowed — the
+   ingest authenticates with the app secret. Webhooks are not used; the function polls. The app can
+   stay in *Development* status: it is linked to a single account.
+4. `python scripts/dropbox_authorize.py --app-key KEY --app-secret SECRET` and follow the prompts.
+   Authorize with the account that can see the scan folder — for a team space, that is the member
+   whose token the namespace id in step 6 belongs to. Regenerating the app secret later invalidates
+   the refresh token.
+5. Store the three credentials as secrets, put the root path in `functions/.env.chronomaps3`.
+6. `python scripts/dropbox_check.py` — verifies auth, detects a team namespace, and lists which
+   folders would be ingested and why the others would not.
+7. `python dropbox_ingest_cli.py --dry-run` for a per-image preview before anything is uploaded.
 
 ---
 
