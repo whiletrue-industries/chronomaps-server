@@ -5,6 +5,7 @@ This directory contains comprehensive documentation for the Chronomaps Server AP
 ## Contents
 
 - [API.md](API.md) - Complete API reference documentation
+- [DROPBOX_SETUP.md](DROPBOX_SETUP.md) - Connecting a Dropbox folder of scans to a workspace
 
 ## Overview
 
@@ -23,6 +24,7 @@ Chronomaps Server is a Firebase Cloud Functions-based backend for managing colla
 - Fine-grained access control (5-level privilege system)
 - AI-powered screenshot analysis using GPT-5.4 Vision
 - Modular image operations (replace image, re-analyze item)
+- Dropbox auto-ingest of scanned pages (batch-aware, deduplicated)
 - Interactive chat agent for guided item completion
 - ML clustering (t-SNE + Agglomerative Clustering)
 - Map tile generation for visualization

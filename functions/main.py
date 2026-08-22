@@ -234,3 +234,44 @@ def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     response = '\n'.join(generate())
     return https_fn.Response(response, status=200, mimetype='plain/text')
 
+
+# Only actual credentials live in Secret Manager; the rest (root path, cutoff,
+# namespace) is non-sensitive configuration and ships in functions/.env.chronomaps3,
+# so a deploy from CI does not depend on secrets that must be created by hand.
+DROPBOX_INGEST_SECRETS = [
+    'SERVICE_ACCOUNT_JSON', 'CHRONOMAPS_API_URL',
+    'DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET', 'DROPBOX_REFRESH_TOKEN',
+]
+
+def _run_dropbox_ingest(dry_run=False, only_folder=None):
+    """Run the ingest under the shared lock, printing each status line."""
+    from dropbox_ingest import run_ingest as run_ingest_fn
+    from dropbox_ingest import lock as ingest_lock
+
+    holder = ingest_lock.acquire()
+    if not holder:
+        bit = dict(action='skipped', reason='another dropbox ingest run holds the lock')
+        print(json.dumps(bit, ensure_ascii=False))
+        return [bit]
+    bits = []
+    try:
+        for bit in run_ingest_fn(dry_run=dry_run, only_folder=only_folder):
+            print(json.dumps(bit, ensure_ascii=False))
+            bits.append(bit)
+    finally:
+        ingest_lock.release(holder)
+    return bits
+
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every 5 minutes", secrets=DROPBOX_INGEST_SECRETS, memory=options.MemoryOption.GB_2, timeout_sec=1800)
+def dropbox_ingest_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
+    print("STARTING dropbox ingest")
+    _run_dropbox_ingest()
+
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=DROPBOX_INGEST_SECRETS, memory=options.MemoryOption.GB_2, timeout_sec=1800)
+def dropbox_ingest(req: https_fn.Request) -> https_fn.Response:
+    if not verify_firebase_admin(req):
+        return https_fn.Response("Unauthorized", status=401)
+    dry_run = req.args.get('dry_run', 'false').lower() == 'true'
+    only_folder = req.args.get('folder')
+    bits = _run_dropbox_ingest(dry_run=dry_run, only_folder=only_folder)
+    return https_fn.Response(json.dumps(bits, ensure_ascii=False), status=200, mimetype='application/json')
