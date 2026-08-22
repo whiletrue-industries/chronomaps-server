@@ -1130,6 +1130,27 @@ the array of per-step status objects.
 starting new work after `DROPBOX_RUN_DEADLINE_SECONDS` (default 1500) so an interrupted chunk cannot
 be re-uploaded by the next run.
 
+### Which folders a run visits
+
+Listing every folder to discover that nothing changed cost ~50s per run. Instead, Dropbox's
+`list_folder/continue` cursor reports what changed since the previous run, and each changed folder is
+marked **dirty** in `chronomaps_global/dropbox_ingest_tracker` (`{root, cursor, dirty, full_sweep_at}`).
+Only dirty folders are visited, and the listing always comes fresh from the folder.
+
+A folder stays dirty until a pass leaves nothing behind — nothing deferred by the settle window, no
+`capped` remainder, no per-file errors, no deadline cut-off. That is what makes the scheme safe: the
+cursor reports each change exactly once, so a scan skipped for being too fresh would otherwise never
+be mentioned again; the flag is what brings the run back to it.
+
+The cursor and the dirty set are written together, before any uploading. Every
+`DROPBOX_FULL_SWEEP_HOURS` (default 6) — and on a first run, a changed root or a cursor Dropbox has
+retired — every folder is re-marked, so a missed change heals on its own rather than staying
+invisible. `POST /dropbox_ingest?full=true` forces that immediately.
+
+Measured on an archive of 36 folders / ~4000 files: an idle run is **1 API call, ~1.4s** (was ~43
+calls, ~50s); a full sweep is ~11 calls, ~10s. The CLI always uses its own in-memory tracker, so a
+manual run visits every folder and never disturbs the deployed function's cursor.
+
 Locally, the same code path runs via `python dropbox_ingest_cli.py --dry-run [--folder NAME]`.
 
 ---
@@ -1412,6 +1433,8 @@ manual setup:
   prints the value when it is needed)
 - `DROPBOX_SETTLE_SECONDS` - Optional; how long a file must be settled before ingest (default 180)
 - `DROPBOX_RUN_DEADLINE_SECONDS` - Optional; stop starting work after this long (default 1500)
+- `DROPBOX_FULL_SWEEP_HOURS` - Optional; how often every folder is re-marked regardless of the
+  cursor (default 6)
 - `SCREENSHOT_HANDLER_URL` - Optional; derived from `CHRONOMAPS_API_URL` when both follow the
   standard naming, required otherwise
 

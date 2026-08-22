@@ -29,7 +29,10 @@ from io import BytesIO
 
 import requests
 
-from .dropbox_api import DropboxClient, DropboxConflict, DropboxError, parse_timestamp
+from . import delta
+from .dropbox_api import (
+    DropboxClient, DropboxConflict, DropboxCursorReset, DropboxError, parse_timestamp,
+)
 from .images import ImageRejected, RATIO_TOLERANCE, TARGET_RATIO, prepare_image
 
 CONFIG_FILENAMES = ('chronomaps.config', '.chronomaps.config', 'chronomaps.txt')
@@ -694,8 +697,15 @@ def _chunks(items, size):
 
 # -- entry point ------------------------------------------------------------
 
-def run_ingest(settings=None, client=None, dry_run=False, only_folder=None, now=None, session=None):
-    """Ingest every eligible workspace folder under the Dropbox root."""
+def run_ingest(settings=None, client=None, dry_run=False, only_folder=None, now=None,
+               session=None, tracker=None, full_sweep=False):
+    """Ingest the workspace folders that have changed since the last run.
+
+    Folders are visited only when Dropbox reports a change in them, and stay on
+    the list until a pass leaves nothing behind (see `delta`). `full_sweep`
+    forces every folder to be visited; `only_folder` is an explicit manual run
+    and leaves the stored cursor alone.
+    """
     settings = settings or load_settings()
     client = client or make_client(settings)
     now = now or _now()
@@ -705,29 +715,103 @@ def run_ingest(settings=None, client=None, dry_run=False, only_folder=None, now=
     yield dict(action='start', root=settings.root_path, dry_run=dry_run,
                cutoff=_iso(settings.folder_cutoff))
 
-    listing = list(client.list_folder(settings.root_path, recursive=True))
-    folders_by_name, buckets = group_entries(listing, settings.root_path)
+    if only_folder:
+        store, stored = delta.MemoryTracker(), delta.empty_tracker()
+    else:
+        store = tracker if tracker is not None else delta.FirestoreTracker()
+        stored = store.load()
+
+    dirty = set(stored.get('dirty') or [])
+    sweep_all = full_sweep or bool(only_folder)
+    reason = None
+
+    if not sweep_all:
+        if stored.get('root') != settings.root_path or not stored.get('cursor'):
+            reason = 'first run for this root'
+        elif delta.full_sweep_due(stored, now):
+            reason = 'periodic full sweep'
+        else:
+            try:
+                changes, cursor = client.list_folder_changes(stored['cursor'])
+                dirty |= delta.dirty_folders(changes, settings.root_path)
+                stored['cursor'] = cursor
+                yield dict(action='delta', changed_entries=len(changes), dirty=len(dirty))
+            except DropboxCursorReset:
+                reason = 'cursor reset by Dropbox'
+
+    # Resolving folder entries costs a listing, so only do it when there is
+    # something to resolve: an idle run should touch nothing at all.
+    by_name, buckets = None, {}
+    if reason or sweep_all:
+        # A sweep visits every folder, so one recursive listing of the root is
+        # far cheaper than a listing per folder.
+        listing = list(client.list_folder(settings.root_path, recursive=True))
+        by_name, buckets = group_entries(listing, settings.root_path)
+        dirty |= set(by_name)
+        stored['full_sweep_at'] = _iso(now)
+        if not only_folder:
+            stored['cursor'] = client.list_folder_cursor(settings.root_path, recursive=True)
+        if reason:
+            yield dict(action='full-sweep', reason=reason, folders=len(dirty))
 
     if only_folder:
         wanted = only_folder.strip('/').lower()
-        folders_by_name = {name: entry for name, entry in folders_by_name.items()
-                           if name == wanted or (entry.get('path_lower') or '').strip('/') == wanted}
+        dirty = {name for name in dirty if name == wanted}
 
-    folders = [folders_by_name[name] for name in sorted(folders_by_name)]
+    if dirty and by_name is None:
+        by_name = _folders_by_name(client, settings.root_path)
+    by_name = by_name or {}
+
+    # Folders that have since been deleted cannot be processed; drop them.
+    missing = dirty - set(by_name)
+    dirty -= missing
+    for name in sorted(missing):
+        yield dict(folder=name, action='forgotten', reason='folder no longer exists')
+
+    stored['root'] = settings.root_path
+    stored['dirty'] = sorted(dirty)
+    # Persisted before any work: if the cursor advanced but the dirty set did
+    # not, those changes would never be reported again.
+    if not dry_run:
+        store.save(stored)
 
     processed = 0
-    for folder in folders:
+    for name in sorted(dirty):
         if time.monotonic() > deadline:
-            yield dict(action='deadline', deferred=len(folders) - processed)
+            yield dict(action='deadline', deferred=len(dirty) - processed)
             break
         processed += 1
         try:
-            yield from process_folder(client, folder, settings, dry_run=dry_run, now=now,
+            leftovers = False
+            for bit in process_folder(client, by_name[name], settings, dry_run=dry_run, now=now,
                                       session=session, deadline=deadline,
-                                      entries=buckets.get(folder.get('name', '').lower(), []))
+                                      entries=buckets.get(name)):
+                leftovers = leftovers or _leaves_work_behind(bit)
+                yield bit
         except Exception as e:                                  # noqa: BLE001
             # One folder's problem (a corrupt state file, a Dropbox hiccup)
             # must never stop the other workspaces from being ingested.
-            yield dict(folder=folder.get('name'), action='error', error=f'{type(e).__name__}: {e}')
+            yield dict(folder=name, action='error', error=f'{type(e).__name__}: {e}')
+            continue
+        if not leftovers and not dry_run:
+            stored['dirty'] = sorted(set(stored['dirty']) - {name})
+            store.save(stored)
 
-    yield dict(action='done', folders=len(folders))
+    yield dict(action='done', folders=len(dirty), still_dirty=len(stored['dirty']))
+
+
+def _folders_by_name(client, root_path):
+    """Top-level folders of the root, keyed by lowercased name."""
+    return {(e.get('name') or '').lower(): e
+            for e in client.list_folder(root_path) if e.get('.tag') == 'folder'}
+
+
+def _leaves_work_behind(bit):
+    """Does this status mean the folder still has something to come back for?"""
+    action = bit.get('action')
+    if action in ('error', 'capped', 'deadline'):
+        return True
+    if action == 'folder':
+        # Scans still syncing are deliberately deferred to a later run.
+        return bool(bit.get('syncing'))
+    return False

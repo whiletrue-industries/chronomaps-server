@@ -21,8 +21,9 @@ from dropbox_ingest import (
     run_ingest, scan_time, upload_scan, write_state, MAX_FILE_ATTEMPTS,
 )
 from dropbox_ingest.dropbox_api import (
-    DropboxClient, DropboxConflict, DropboxError, team_namespace_id,
+    DropboxClient, DropboxConflict, DropboxCursorReset, DropboxError, team_namespace_id,
 )
+from dropbox_ingest import delta
 from dropbox_ingest.images import ImageRejected, crop_to_ratio, prepare_image
 
 NOW = datetime.datetime(2026, 8, 25, 12, 0, 0, tzinfo=datetime.timezone.utc)
@@ -75,7 +76,11 @@ class FakeDropbox:
         self.files = files or {}
         self.uploads = []
         self.rev_counter = 0
-        self.calls = {'list_folder': 0, 'get_metadata': 0, 'download': 0, 'upload': 0}
+        self.calls = {'list_folder': 0, 'get_metadata': 0, 'download': 0, 'upload': 0,
+                      'list_folder_changes': 0, 'list_folder_cursor': 0}
+        self.pending_changes = []       # entries the next delta call reports
+        self.cursor_reset = False
+        self.cursor_counter = 0
 
     def list_folder(self, path, recursive=False):
         self.calls['list_folder'] += 1
@@ -87,6 +92,19 @@ class FakeDropbox:
                 if other != path and other.startswith(prefix):
                     entries.extend(extra)
         return iter(entries)
+
+    def list_folder_cursor(self, path, recursive=False):
+        self.calls['list_folder_cursor'] += 1
+        self.cursor_counter += 1
+        return f'cursor-{self.cursor_counter}'
+
+    def list_folder_changes(self, cursor):
+        self.calls['list_folder_changes'] += 1
+        if self.cursor_reset:
+            raise DropboxCursorReset('reset', 409, {'error_summary': 'reset/...'})
+        changes, self.pending_changes = self.pending_changes, []
+        self.cursor_counter += 1
+        return changes, f'cursor-{self.cursor_counter}'
 
     def get_metadata(self, path):
         self.calls['get_metadata'] += 1
@@ -570,6 +588,12 @@ class FolderFixture:
         return json.loads(self.client.files['/archive/ws/chronomaps.state.json'][0])
 
 
+def warm_tracker(root='/archive', dirty=(), when='2026-08-25T11:59:00Z'):
+    """A tracker that has already swept, so runs take the delta path."""
+    return delta.MemoryTracker({'root': root, 'cursor': 'cursor-0',
+                                'dirty': list(dirty), 'full_sweep_at': when})
+
+
 def upload_session():
     """A requests-like session that names each item after the file it received.
 
@@ -820,39 +844,182 @@ class TestGroupEntries:
 
 
 class TestListingCost:
-    """The point of the single listing: an idle sweep must not scale with folders."""
+    """The point of the delta scheme: an idle sweep must touch almost nothing."""
 
-    def _idle_client(self, folder_count):
+    def _client(self, folder_count):
         folders = [folder_entry(f'/archive/ws-{i}') for i in range(folder_count)]
         entries = {'/archive': folders}
         for folder in folders:
             entries[folder['path_display']] = [file_entry(f"{folder['path_display']}/notes.txt")]
         return FakeDropbox(entries, {})
 
-    def test_idle_sweep_lists_once_regardless_of_folder_count(self):
+    def test_idle_run_touches_nothing(self):
         for folder_count in (5, 40):
-            client = self._idle_client(folder_count)
-            list(run_ingest(settings=make_settings(), client=client, now=NOW))
-            assert client.calls['list_folder'] == 1, f'{folder_count} folders should still be one listing'
+            client = self._client(folder_count)
+            results = list(run_ingest(settings=make_settings(), client=client, now=NOW,
+                                      tracker=warm_tracker()))
+            assert client.calls['list_folder_changes'] == 1
+            assert client.calls['list_folder'] == 0, 'no folder is listed when nothing changed'
             assert client.calls['get_metadata'] == 0
             assert client.calls['download'] == 0
+            assert results[-1]['action'] == 'done' and results[-1]['folders'] == 0
+
+    def test_only_the_changed_folder_is_listed(self):
+        client = self._client(5)
+        client.pending_changes = [file_entry('/archive/ws-3/new.jpg')]
+        list(run_ingest(settings=make_settings(), client=client, now=NOW, tracker=warm_tracker()))
+        # one listing to resolve folder names, one for the folder that changed
+        assert client.calls['list_folder'] == 2
+
+    def test_first_run_sweeps_everything_and_stores_a_cursor(self):
+        client = self._client(3)
+        tracker = delta.MemoryTracker()
+        results = list(run_ingest(settings=make_settings(), client=client, now=NOW, tracker=tracker))
+        sweep = [r for r in results if r['action'] == 'full-sweep']
+        assert sweep and sweep[0]['reason'] == 'first run for this root'
+        assert client.calls['list_folder_cursor'] == 1
+        assert tracker.load()['cursor'] == 'cursor-1'
 
     def test_active_folder_does_not_re_look_up_its_state_file(self):
         state = dict(empty_state('ws-1'), files={'hash-a.jpg': {'item_id': 'x'}})
         fixture = FolderFixture(
             files=[('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')],
             state=state)
-        list(run_ingest(settings=make_settings(), client=fixture.client, now=NOW))
-        # config + state downloads, and no separate metadata lookup for the state file
+        fixture.client.pending_changes = [file_entry('/archive/ws/a.jpg')]
+        list(run_ingest(settings=make_settings(), client=fixture.client, now=NOW,
+                        tracker=warm_tracker()))
         assert fixture.client.calls['get_metadata'] == 0
-        assert fixture.client.calls['download'] == 2
+        assert fixture.client.calls['download'] == 2      # credentials + state
 
     def test_missing_state_file_is_confirmed_before_re_ingesting(self):
         """A stale listing must not be trusted into re-uploading everything."""
         fixture = FolderFixture(
             files=[('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
-        list(run_ingest(settings=make_settings(), client=fixture.client, dry_run=True, now=NOW))
+        fixture.client.pending_changes = [file_entry('/archive/ws/a.jpg')]
+        list(run_ingest(settings=make_settings(), client=fixture.client, dry_run=True, now=NOW,
+                        tracker=warm_tracker()))
         assert fixture.client.calls['get_metadata'] == 1
+
+
+class TestDirtyFolders:
+    """A folder stays on the list until a pass leaves nothing behind."""
+
+    def _fixture(self, **kwargs):
+        fixture = FolderFixture(**kwargs)
+        fixture.client.pending_changes = [file_entry('/archive/ws/a.jpg')]
+        return fixture
+
+    def _run(self, fixture, tracker, **kwargs):
+        return list(run_ingest(settings=make_settings(), client=fixture.client, now=NOW,
+                               tracker=tracker, **kwargs))
+
+    def test_clean_pass_clears_the_flag(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        tracker = warm_tracker()
+        self._run(fixture, tracker, session=upload_session())
+        assert tracker.load()['dirty'] == []
+
+    def test_deferred_scan_keeps_the_folder_dirty(self):
+        """The cursor reports a change once; the flag is what brings us back."""
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T11:59:50Z', '2026-08-25T11:59:55Z')])
+        tracker = warm_tracker()
+        self._run(fixture, tracker, session=upload_session())
+        assert tracker.load()['dirty'] == ['ws']
+
+        # Next run: the cursor has nothing new, but the flag brings us back and
+        # the scan - now settled - is ingested.
+        fixture.client.pending_changes = []
+        later = NOW + datetime.timedelta(minutes=10)
+        results = list(run_ingest(settings=make_settings(), client=fixture.client, now=later,
+                                  tracker=tracker, session=upload_session()))
+        assert [r for r in results if r['action'] == 'uploaded']
+        assert tracker.load()['dirty'] == []
+
+    def test_capped_folder_stays_dirty(self):
+        fixture = self._fixture(
+            files=[(f'{i}.jpg', image_bytes(530, 1000), f'2026-08-25T10:0{i}:00Z',
+                    f'2026-08-25T10:0{i}:20Z') for i in range(3)],
+            config_text='workspace: ws-1\napi_key: key-1\nmax_uploads_per_run: 2\n')
+        tracker = warm_tracker()
+        self._run(fixture, tracker, session=upload_session())
+        assert tracker.load()['dirty'] == ['ws'], 'the deferred images must not be forgotten'
+
+    def test_failed_upload_keeps_the_folder_dirty(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        session = Mock()
+        session.post.return_value = Mock(status_code=500, text='boom')
+        tracker = warm_tracker()
+        self._run(fixture, tracker, session=session)
+        assert tracker.load()['dirty'] == ['ws']
+
+    def test_skipped_image_does_not_keep_the_folder_dirty(self):
+        """A rejected ratio is a final verdict, not unfinished work."""
+        fixture = self._fixture(files=[
+            ('wide.jpg', image_bytes(1000, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        tracker = warm_tracker()
+        self._run(fixture, tracker, session=upload_session())
+        assert tracker.load()['dirty'] == []
+
+    def test_cursor_and_flags_are_persisted_before_any_work(self):
+        """If the cursor advanced but the flags did not, changes would be lost."""
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        tracker = warm_tracker()
+        saved = []
+        original = tracker.save
+        tracker.save = lambda data: (saved.append(dict(data)), original(data))[1]
+
+        session = Mock()
+        session.post.side_effect = RuntimeError('died mid-run')
+        self._run(fixture, tracker, session=session)
+
+        assert saved[0]['dirty'] == ['ws'], 'flag stored before the upload was attempted'
+        assert saved[0]['cursor'] == 'cursor-1'
+        assert tracker.load()['dirty'] == ['ws'], 'and still set after the failure'
+
+    def test_dry_run_does_not_persist(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        tracker = warm_tracker()
+        self._run(fixture, tracker, dry_run=True)
+        assert tracker.load()['cursor'] == 'cursor-0', 'cursor untouched'
+        assert tracker.load()['dirty'] == []
+
+    def test_cursor_reset_falls_back_to_a_full_sweep(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        fixture.client.cursor_reset = True
+        tracker = warm_tracker()
+        results = self._run(fixture, tracker, session=upload_session())
+        sweep = [r for r in results if r['action'] == 'full-sweep']
+        assert sweep and sweep[0]['reason'] == 'cursor reset by Dropbox'
+        assert [r for r in results if r['action'] == 'uploaded']
+
+    def test_changing_the_root_forces_a_full_sweep(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        tracker = warm_tracker(root='/somewhere-else')
+        results = self._run(fixture, tracker, session=upload_session())
+        assert [r for r in results if r['action'] == 'full-sweep'][0]['reason'] == 'first run for this root'
+        assert tracker.load()['root'] == '/archive'
+
+    def test_periodic_sweep_re_marks_everything(self):
+        fixture = self._fixture(files=[
+            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        stale = warm_tracker(when='2026-08-24T00:00:00Z')      # older than the interval
+        results = self._run(fixture, stale, session=upload_session())
+        assert [r for r in results if r['action'] == 'full-sweep'][0]['reason'] == 'periodic full sweep'
+        assert stale.load()['full_sweep_at'] == '2026-08-25T12:00:00Z'
+
+    def test_deleted_folder_is_forgotten(self):
+        client = FakeDropbox({'/archive': []}, {})
+        tracker = warm_tracker(dirty=['gone'])
+        results = list(run_ingest(settings=make_settings(), client=client, now=NOW, tracker=tracker))
+        assert [r for r in results if r['action'] == 'forgotten']
+        assert tracker.load()['dirty'] == []
 
 
 class TestRunIngest:
@@ -866,7 +1033,8 @@ class TestRunIngest:
             '/archive/broken/chronomaps.config': (b'workspace: ws\napi_key: k\nratio: 0,53\n', 'r'),
             '/archive/ok/chronomaps.config': (b'workspace: ws-ok\napi_key: k\n', 'r'),
         })
-        results = list(run_ingest(settings=make_settings(), client=client, dry_run=True, now=NOW))
+        results = list(run_ingest(settings=make_settings(), client=client, dry_run=True, now=NOW,
+                                  tracker=delta.MemoryTracker()))
         assert [r for r in results if r['action'] == 'skip-folder' and 'bad credentials' in r['reason']]
         assert [r for r in results if r.get('workspace') == 'ws-ok']
         assert results[-1]['action'] == 'done'
@@ -875,7 +1043,8 @@ class TestRunIngest:
         folders = [folder_entry(f'/archive/ws{i}') for i in range(3)]
         client = FakeDropbox({'/archive': folders}, {})
         settings = make_settings(run_deadline_seconds=-1)
-        results = list(run_ingest(settings=settings, client=client, dry_run=True, now=NOW))
+        results = list(run_ingest(settings=settings, client=client, dry_run=True, now=NOW,
+                                  tracker=delta.MemoryTracker()))
         deadline = [r for r in results if r['action'] == 'deadline']
         assert deadline and deadline[0]['deferred'] == 3
 
@@ -895,6 +1064,7 @@ class TestRunIngest:
             '/archive/ok': [],
         }, {'/archive/broken/chronomaps.config': (b'workspace: ws\napi_key: k\n', 'r')})
         client.files['/archive/broken/chronomaps.state.json'] = (b'{corrupt', 'r')
-        results = list(run_ingest(settings=make_settings(), client=client, now=NOW))
+        results = list(run_ingest(settings=make_settings(), client=client, now=NOW,
+                                  tracker=delta.MemoryTracker()))
         assert [r for r in results if r['action'] == 'error']
         assert results[-1]['action'] == 'done'

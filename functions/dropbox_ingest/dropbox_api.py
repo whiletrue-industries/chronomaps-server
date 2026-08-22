@@ -49,6 +49,10 @@ class DropboxConflict(DropboxError):
     """A write lost a race (rev mismatch) and must be retried."""
 
 
+class DropboxCursorReset(DropboxError):
+    """Dropbox invalidated the listing cursor; the caller must start over."""
+
+
 def parse_timestamp(value):
     """Parse a Dropbox ISO-8601 timestamp (always UTC, 'Z' suffixed)."""
     if not value:
@@ -186,6 +190,42 @@ class DropboxClient:
     def get_current_account(self):
         """Account info, including which namespace this token's paths resolve in."""
         return self._request(f'{API_BASE}/2/users/get_current_account').json()
+
+    def list_folder_cursor(self, path, recursive=False):
+        """The cursor for the current state of `path`, without listing it.
+
+        Used when the caller is about to look at everything anyway, so paging
+        the whole listing just to obtain a cursor would be wasted.
+        """
+        response = self._request(f'{API_BASE}/2/files/list_folder/get_latest_cursor', json_body={
+            'path': _normalize_path(path),
+            'recursive': recursive,
+            'include_deleted': True,
+            'include_media_info': False,
+        })
+        return response.json()['cursor']
+
+    def list_folder_changes(self, cursor):
+        """Return `(entries, cursor)` for everything changed since `cursor`.
+
+        Entries include deletions (`.tag == 'deleted'`), which is how a removed
+        state file or credentials file becomes visible. Raises
+        DropboxCursorReset when Dropbox retires the cursor.
+        """
+        entries = []
+        while True:
+            try:
+                response = self._request(f'{API_BASE}/2/files/list_folder/continue',
+                                         json_body={'cursor': cursor})
+            except DropboxError as e:
+                if e.status_code == 409 and 'reset' in e.summary:
+                    raise DropboxCursorReset(str(e), e.status_code, e.body)
+                raise
+            result = response.json()
+            entries.extend(result.get('entries', []))
+            cursor = result['cursor']
+            if not result.get('has_more'):
+                return entries, cursor
 
     def get_metadata(self, path):
         """Return the entry dict for `path`, or None when it does not exist."""
