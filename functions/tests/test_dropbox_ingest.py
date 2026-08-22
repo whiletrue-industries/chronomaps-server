@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 
 from dropbox_ingest import (
-    ConfigurationError, FolderConfig, Settings, assign_batches, batches_from,
+    ConfigurationError, FolderConfig, Settings, assign_batches, batches_from, group_entries,
     derive_handler_url, empty_state, entry_key, find_config_entry, folder_created_at,
     is_known, merge_batches, merge_states, parse_credentials, process_folder, read_state,
     run_ingest, scan_time, upload_scan, write_state, MAX_FILE_ATTEMPTS,
@@ -75,16 +75,27 @@ class FakeDropbox:
         self.files = files or {}
         self.uploads = []
         self.rev_counter = 0
+        self.calls = {'list_folder': 0, 'get_metadata': 0, 'download': 0, 'upload': 0}
 
     def list_folder(self, path, recursive=False):
-        return iter(self.entries_by_folder.get(path, []))
+        self.calls['list_folder'] += 1
+        entries = list(self.entries_by_folder.get(path, []))
+        if recursive:
+            # Real Dropbox returns everything below `path`, at any depth.
+            prefix = path.rstrip('/') + '/'
+            for other, extra in self.entries_by_folder.items():
+                if other != path and other.startswith(prefix):
+                    entries.extend(extra)
+        return iter(entries)
 
     def get_metadata(self, path):
+        self.calls['get_metadata'] += 1
         if path in self.files:
             return {'.tag': 'file', 'path_display': path, 'rev': self.files[path][1]}
         return None
 
     def download(self, path):
+        self.calls['download'] += 1
         if path not in self.files:
             raise AssertionError(f'unexpected download of {path}')
         return self.files[path][0]
@@ -781,6 +792,67 @@ class TestPartialFailures:
         batches = fixture.state()['recent_batches']
         assert len(batches) == 1, 'only the batch that was actually processed'
         assert batches[0]['last_scanned_at'] == '2026-08-25T10:03:00Z'
+
+
+class TestGroupEntries:
+    def test_splits_a_recursive_listing_by_top_level_folder(self):
+        listing = [
+            folder_entry('/archive/ws-a'),
+            folder_entry('/archive/ws-b'),
+            file_entry('/archive/ws-a/chronomaps.config'),
+            file_entry('/archive/ws-a/sub/deep.jpg'),
+            file_entry('/archive/ws-b/page.jpg'),
+        ]
+        folders, buckets = group_entries(listing, '/archive')
+        assert set(folders) == {'ws-a', 'ws-b'}
+        assert {e['name'] for e in buckets['ws-a']} == {'chronomaps.config', 'deep.jpg'}
+        assert {e['name'] for e in buckets['ws-b']} == {'page.jpg'}
+
+    def test_ignores_entries_outside_the_root(self):
+        listing = [folder_entry('/elsewhere/ws'), file_entry('/elsewhere/ws/a.jpg')]
+        folders, buckets = group_entries(listing, '/archive')
+        assert folders == {} and buckets == {}
+
+    def test_nested_folders_are_not_treated_as_workspaces(self):
+        listing = [folder_entry('/archive/ws'), folder_entry('/archive/ws/round-2')]
+        folders, _buckets = group_entries(listing, '/archive')
+        assert set(folders) == {'ws'}
+
+
+class TestListingCost:
+    """The point of the single listing: an idle sweep must not scale with folders."""
+
+    def _idle_client(self, folder_count):
+        folders = [folder_entry(f'/archive/ws-{i}') for i in range(folder_count)]
+        entries = {'/archive': folders}
+        for folder in folders:
+            entries[folder['path_display']] = [file_entry(f"{folder['path_display']}/notes.txt")]
+        return FakeDropbox(entries, {})
+
+    def test_idle_sweep_lists_once_regardless_of_folder_count(self):
+        for folder_count in (5, 40):
+            client = self._idle_client(folder_count)
+            list(run_ingest(settings=make_settings(), client=client, now=NOW))
+            assert client.calls['list_folder'] == 1, f'{folder_count} folders should still be one listing'
+            assert client.calls['get_metadata'] == 0
+            assert client.calls['download'] == 0
+
+    def test_active_folder_does_not_re_look_up_its_state_file(self):
+        state = dict(empty_state('ws-1'), files={'hash-a.jpg': {'item_id': 'x'}})
+        fixture = FolderFixture(
+            files=[('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')],
+            state=state)
+        list(run_ingest(settings=make_settings(), client=fixture.client, now=NOW))
+        # config + state downloads, and no separate metadata lookup for the state file
+        assert fixture.client.calls['get_metadata'] == 0
+        assert fixture.client.calls['download'] == 2
+
+    def test_missing_state_file_is_confirmed_before_re_ingesting(self):
+        """A stale listing must not be trusted into re-uploading everything."""
+        fixture = FolderFixture(
+            files=[('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')])
+        list(run_ingest(settings=make_settings(), client=fixture.client, dry_run=True, now=NOW))
+        assert fixture.client.calls['get_metadata'] == 1
 
 
 class TestRunIngest:
