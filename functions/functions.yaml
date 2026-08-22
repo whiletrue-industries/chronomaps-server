@@ -1,3 +1,14 @@
+# Firebase deployment manifest.
+#
+# firebase-tools reads this file INSTEAD of discovering the decorators in
+# main.py, so:
+#   * a new @https_fn / @scheduler_fn function is NOT deployed until it is
+#     listed here - the deploy succeeds and simply omits it, silently;
+#   * the values here win over the decorator, including `schedule` (note that
+#     enhance_all_daily and cluster_its_time run far less often here than
+#     main.py suggests).
+# Keep an entry in sync with its decorator, or delete this file to go back to
+# discovery - but check the schedules before you do.
 endpoints:
   chronomaps_api:
     availableMemoryMb: 1024
@@ -220,6 +231,48 @@ endpoints:
     - key: SERVICE_ACCOUNT_JSON
     serviceAccountEmail: null
     timeoutSeconds: 540
+  dropbox_ingest:
+    availableMemoryMb: 2048
+    concurrency: null
+    entryPoint: dropbox_ingest
+    httpsTrigger: {}
+    ingressSettings: null
+    labels: {}
+    maxInstances: null
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west4
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
+    - key: CHRONOMAPS_API_URL
+    - key: DROPBOX_APP_KEY
+    - key: DROPBOX_APP_SECRET
+    - key: DROPBOX_REFRESH_TOKEN
+    serviceAccountEmail: null
+    timeoutSeconds: 1800
+  dropbox_ingest_scheduled:
+    availableMemoryMb: 2048
+    concurrency: null
+    entryPoint: dropbox_ingest_scheduled
+    ingressSettings: null
+    labels: {}
+    maxInstances: 1
+    minInstances: null
+    platform: gcfv2
+    region:
+    - europe-west1
+    scheduleTrigger:
+      retryConfig: {}
+      schedule: every 5 minutes
+    secretEnvironmentVariables:
+    - key: SERVICE_ACCOUNT_JSON
+    - key: CHRONOMAPS_API_URL
+    - key: DROPBOX_APP_KEY
+    - key: DROPBOX_APP_SECRET
+    - key: DROPBOX_REFRESH_TOKEN
+    serviceAccountEmail: null
+    timeoutSeconds: 1800
 params:
 - name: OPENAI_API_KEY
   type: secret
@@ -228,6 +281,12 @@ params:
 - name: SERVICE_ACCOUNT_JSON
   type: secret
 - name: CONFIG__ITS_TIME
+  type: secret
+- name: DROPBOX_APP_KEY
+  type: secret
+- name: DROPBOX_APP_SECRET
+  type: secret
+- name: DROPBOX_REFRESH_TOKEN
   type: secret
 requiredAPIs:
 - api: cloudscheduler.googleapis.com
