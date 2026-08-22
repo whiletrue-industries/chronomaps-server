@@ -228,10 +228,24 @@ def empty_state(workspace):
     }
 
 
-def read_state(client, folder_path, workspace):
-    """Return `(state, rev)`; rev is None when there is no state file yet."""
+def read_state(client, folder_path, workspace, entries=None):
+    """Return `(state, rev)`; rev is None when there is no state file yet.
+
+    `entries` is the folder's listing when the caller already has it — the state
+    file's metadata is in there, so looking it up again would be a wasted call.
+    """
     path = f'{folder_path}/{STATE_FILENAME}'
-    metadata = client.get_metadata(path)
+    if entries is None:
+        metadata = client.get_metadata(path)
+    else:
+        metadata = next((e for e in entries if e.get('.tag') == 'file'
+                         and e.get('path_lower') == path.lower()), None)
+        if metadata is None:
+            # The listing says there is no state file. Confirm it directly
+            # before treating the folder as never-ingested: acting on a stale
+            # listing would re-upload every image in it. Costs one call, and
+            # only for a folder that has not been ingested yet.
+            metadata = client.get_metadata(path)
     if not metadata:
         return empty_state(workspace), None
     try:
@@ -316,6 +330,34 @@ def write_state(client, folder_path, state, rev, attempts=3):
 
 
 # -- listing / eligibility --------------------------------------------------
+
+def group_entries(entries, root_path):
+    """Split one recursive listing of the root into per-folder buckets.
+
+    Asking Dropbox about each workspace folder separately costs one round trip
+    per folder — 36 of them, and about 45 seconds, to learn that nothing has
+    changed. One recursive listing answers the same question in a handful of
+    paged calls.
+
+    Returns `(folders, buckets)`: the top-level folder entries by name, and
+    each one's entries (at any depth below it).
+    """
+    prefix = root_path.lower().rstrip('/') + '/'
+    folders, buckets = {}, {}
+    for entry in entries:
+        path = entry.get('path_lower') or ''
+        if not path.startswith(prefix):
+            continue
+        relative = path[len(prefix):]
+        if not relative:
+            continue
+        top = relative.split('/', 1)[0]
+        if entry.get('.tag') == 'folder' and relative == top:
+            folders[top] = entry
+        else:
+            buckets.setdefault(top, []).append(entry)
+    return folders, buckets
+
 
 def is_image(entry):
     return (entry.get('.tag') == 'file'
@@ -473,13 +515,19 @@ def upload_scan(settings, config, image_bytes, filename, author_id, metadata, se
 
 # -- per-folder flow --------------------------------------------------------
 
-def process_folder(client, folder, settings, dry_run=False, now=None, session=None, deadline=None):
-    """Ingest one workspace folder, yielding status dicts as it goes."""
+def process_folder(client, folder, settings, dry_run=False, now=None, session=None,
+                   deadline=None, entries=None):
+    """Ingest one workspace folder, yielding status dicts as it goes.
+
+    `entries` is this folder's listing when the caller already has it (see
+    `group_entries`); without it the folder is listed here.
+    """
     now = now or _now()
     folder_path = folder.get('path_display') or folder.get('path_lower')
     name = folder.get('name', folder_path)
 
-    entries = list(client.list_folder(folder_path, recursive=True))
+    if entries is None:
+        entries = list(client.list_folder(folder_path, recursive=True))
     config_entry = find_config_entry(entries, folder.get('path_lower', folder_path))
     if not config_entry:
         yield dict(folder=name, action='skip-folder', reason='no credentials file')
@@ -502,7 +550,7 @@ def process_folder(client, folder, settings, dry_run=False, now=None, session=No
                    reason=f'created {_iso(created_at)}, before cutoff {_iso(settings.folder_cutoff)}')
         return
 
-    state, rev = read_state(client, folder_path, config.workspace)
+    state, rev = read_state(client, folder_path, config.workspace, entries)
 
     images = [e for e in entries if is_image(e)]
 
@@ -657,11 +705,15 @@ def run_ingest(settings=None, client=None, dry_run=False, only_folder=None, now=
     yield dict(action='start', root=settings.root_path, dry_run=dry_run,
                cutoff=_iso(settings.folder_cutoff))
 
-    folders = [e for e in client.list_folder(settings.root_path) if e.get('.tag') == 'folder']
+    listing = list(client.list_folder(settings.root_path, recursive=True))
+    folders_by_name, buckets = group_entries(listing, settings.root_path)
+
     if only_folder:
         wanted = only_folder.strip('/').lower()
-        folders = [f for f in folders if f.get('name', '').lower() == wanted
-                   or (f.get('path_lower') or '').strip('/') == wanted]
+        folders_by_name = {name: entry for name, entry in folders_by_name.items()
+                           if name == wanted or (entry.get('path_lower') or '').strip('/') == wanted}
+
+    folders = [folders_by_name[name] for name in sorted(folders_by_name)]
 
     processed = 0
     for folder in folders:
@@ -671,7 +723,8 @@ def run_ingest(settings=None, client=None, dry_run=False, only_folder=None, now=
         processed += 1
         try:
             yield from process_folder(client, folder, settings, dry_run=dry_run, now=now,
-                                      session=session, deadline=deadline)
+                                      session=session, deadline=deadline,
+                                      entries=buckets.get(folder.get('name', '').lower(), []))
         except Exception as e:                                  # noqa: BLE001
             # One folder's problem (a corrupt state file, a Dropbox hiccup)
             # must never stop the other workspaces from being ingested.
