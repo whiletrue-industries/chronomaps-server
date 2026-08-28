@@ -22,6 +22,7 @@ from screenshot_handler import screenshot_handler as screenshot_handler_fn
 from screenshot_handler import replace_item_image as replace_item_image_fn
 from screenshot_handler import reanalyze_item as reanalyze_item_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
+from cluster_screenshots import cluster_screenshots as cluster_screenshots_one
 from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_fn
 from enhance_image import enhance_image as enhance_image_fn
 from enhance_image import enhance_all_images as enhance_all_images_fn
@@ -165,7 +166,7 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
     start = time.time()
     
     def generate():
-        for bit in cluster_screenshots_fn(config, tag=tag, add_title=add_title):
+        for bit in cluster_screenshots_one(config, tag=tag, add_title=add_title):
             delta = int(time.time() - start)
             bit = [delta, bit]
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"
