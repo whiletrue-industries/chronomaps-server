@@ -128,7 +128,10 @@ def ensure_analysis(records, workspace, api_key, params: TSNEParams):
             record['embedding'] = embedding
             requests.put(f'{params.CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
 
-        if record.get('ai_favorable_future') and record.get('ai_plausibility') is not None:
+        # Only items the resolver can't answer for. An item with a human answer
+        # already renders, and its ai_* value would never be read - inferring one
+        # is spend for nothing, and it crowds the clustering out of its budget.
+        if resolve_favorable_future(record):
             continue
         if inferred >= params.ANALYSIS_BACKFILL_LIMIT:
             deferred += 1
