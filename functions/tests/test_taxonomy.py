@@ -116,24 +116,62 @@ class TestGenerateEmbedding:
 
 
 class TestUseItem:
+    """`use_item` decides which items reach clustering and taxonomy.
+
+    Each case carries the fields it is *not* testing, so a failure points at the
+    rule under test instead of at an incidentally missing field. That is what
+    went wrong before: these cases omitted `created_at`, so when it became
+    required they failed for a reason none of them was about.
+    """
+
+    COMPLETE = {
+        'favorable_future': 'yes',
+        'future_scenario_description': 'desc',
+        'created_at': '2026-01-01T00:00:00Z',
+    }
+
+    def item(self, **overrides):
+        """A usable item, with fields overridden or (on None) removed."""
+        item = dict(self.COMPLETE)
+        for field, value in overrides.items():
+            if value is None:
+                item.pop(field, None)
+            else:
+                item[field] = value
+        return item
+
+    def test_accepts_a_complete_item(self):
+        from shared import use_item
+        assert use_item(self.COMPLETE) is True
+
     def test_requires_favorable_future_by_default(self):
         from shared import use_item
-        assert use_item({'future_scenario_description': 'desc'}) is False
+        assert use_item(self.item(favorable_future=None)) is False
 
     def test_accepts_valid_favorable_future(self):
         from shared import use_item
-        assert use_item({'favorable_future': 'yes', 'future_scenario_description': 'desc'}) is True
-        assert use_item({'favorable_future': 'prevent', 'future_scenario_description': 'desc'}) is True
-        assert use_item({'favorable_future': 'mostly_prefer', 'future_scenario_description': 'desc'}) is True
+        for value in ('yes', 'prevent', 'mostly_prefer'):
+            assert use_item(self.item(favorable_future=value)) is True, value
+
+    def test_rejects_unrecognised_favorable_future(self):
+        from shared import use_item
+        assert use_item(self.item(favorable_future='maybe')) is False
 
     def test_skips_favorable_future_check_when_not_required(self):
         from shared import use_item
-        assert use_item({'future_scenario_description': 'desc'}, favorable_future_required=False) is True
+        assert use_item(self.item(favorable_future=None), favorable_future_required=False) is True
 
     def test_requires_description_always(self):
         from shared import use_item
-        assert use_item({'favorable_future': 'yes'}, favorable_future_required=False) is False
+        assert use_item(self.item(future_scenario_description=None), favorable_future_required=False) is False
+        assert use_item(self.item(future_scenario_description=''), favorable_future_required=False) is False
         assert use_item({}, favorable_future_required=False) is False
+
+    def test_requires_created_at(self):
+        """Added in 1898c8c, and until now untested: no timestamp, no item."""
+        from shared import use_item
+        assert use_item(self.item(created_at=None)) is False
+        assert use_item(self.item(created_at=None), favorable_future_required=False) is False
 
 
 # --- Tests for taxonomy.naming ---
