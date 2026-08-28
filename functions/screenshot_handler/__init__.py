@@ -11,7 +11,6 @@ import requests
 
 # Use key, instructions, and filename to generate a structured response from openai api
 INSTRUCTIONS = Path(__file__).with_name('SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
-AUTOMATIC_INSTRUCTIONS = Path(__file__).with_name('AUTOMATIC_SCREENSHOT_DESCRIBER_PROMPT.md').read_text().strip()
 
 
 class _LazyOpenAIClient:
@@ -106,10 +105,10 @@ def analyze_image(image_bytes, image_content_type, automatic=False, existing_met
     Returns an analysis record dict.
     """
     base64_image = encode_image(image_bytes)
-    prompt = AUTOMATIC_INSTRUCTIONS if automatic else INSTRUCTIONS
+    prompt = INSTRUCTIONS
 
     if automatic and existing_metadata:
-        prompt = AUTOMATIC_INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(existing_metadata, indent=2)
+        prompt = INSTRUCTIONS + "\n\nProvided item metadata - consider it absolute truth:\n" + json.dumps(existing_metadata, indent=2)
 
     if user_metadata:
         prompt += """
@@ -171,8 +170,16 @@ Consider them as truth (overriding any text you might extract from the image), u
         created_at=(now := datetime.datetime.now(datetime.timezone.utc).isoformat()),
         updated_at=now,
         automatic=automatic,
-        plausibility=content.get('plausibility'),
-        favorable_future=content.get('favorable_future'),
+        # What the model inferred, always recorded under its own keys so it
+        # never overwrites an answer a person gave.
+        ai_plausibility=content.get('plausibility'),
+        ai_favorable_future=content.get('favorable_future'),
+        # In automatic mode there is nobody to answer the question, so the
+        # inferred values are also the canonical ones.
+        **(dict(
+            plausibility=content.get('plausibility'),
+            favorable_future=content.get('favorable_future'),
+        ) if automatic else {}),
     )
 
 

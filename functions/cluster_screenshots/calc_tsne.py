@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 import datetime
 
@@ -20,7 +21,8 @@ try:
 except ImportError:
     pass
 
-from shared import use_item, EMBEDDING_DIMENSION
+from shared import (use_item, EMBEDDING_DIMENSION,
+                    resolve_favorable_future, resolve_plausibility)
 
 FONT = Path(__file__).with_name('SourceSans.ttf')
 
@@ -43,7 +45,7 @@ def load_records(config, records, params: TSNEParams):
         items = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}/items', req_params, headers={'Authorization': api_key}).json()
         if isinstance(items, list):
             yield dict(msg=f'Got {len(items)} items.')
-            yield from ensure_embeddings(items, workspace, api_key, params)
+            yield from ensure_analysis(items, workspace, api_key, params)
             items = [item for item in items if use_item(item)]
             items = sorted(items, key=lambda x: x['created_at'], reverse=True)
             items = items[:max_per_workspace]
@@ -52,24 +54,100 @@ def load_records(config, records, params: TSNEParams):
             records.extend(items)
     records.sort(key=lambda x: x['created_at'], reverse=True)
 
-def ensure_embeddings(records, workspace, api_key, params: TSNEParams):
+INFER_FAVORABILITY_PROMPT = """\
+You are given a description of a future scenario. Judge two things about it and \
+respond with a JSON object and nothing else:
+
+{
+  "plausibility": <0-100>, # 100 means the scenario is certain to happen, 0 means it has a very low chance of happening.
+  "favorable_future": "preferred/prevent/uncertain" # whether this is a future to work towards, one to avoid, or neither.
+}
+
+The future scenario:
+:DESCRIPTION:
+"""
+
+
+def infer_favorability(openai, description):
+    """Ask the model for the favorability/plausibility of a scenario description.
+
+    Text-only on purpose: the item's image is not needed for this judgement, and
+    avoiding a re-analysis means we never rewrite fields like created_at.
+    Returns (favorable_future, plausibility) or (None, None) if unusable.
+    """
+    completion = openai.chat.completions.create(
+        model="gpt-5.4",
+        messages=[{
+            'role': 'user',
+            'content': INFER_FAVORABILITY_PROMPT.replace(':DESCRIPTION:', description),
+        }],
+        response_format={'type': 'json_object'},
+    )
+    content = completion.choices[0].message.content
+    if not content:
+        return None, None
+    content = json.loads(content)
+    favorable_future = content.get('favorable_future')
+    plausibility = content.get('plausibility')
+    if not isinstance(favorable_future, str):
+        return None, None
+    try:
+        plausibility = int(plausibility)
+    except (TypeError, ValueError):
+        return None, None
+    return favorable_future, plausibility
+
+
+def ensure_analysis(records, workspace, api_key, params: TSNEParams):
+    """Top up the derived fields the layout needs: embeddings, and the AI-inferred
+    favorability that items analysed by the older prompt never got.
+
+    The favorability backfill is bounded per call. On first contact with a
+    workspace that predates `ai_favorable_future` this is one model call per
+    item, inside a function that has to finish within its request timeout - so
+    it fills what it can and leaves the rest for the next run, which is safe
+    because nothing here is destructive.
+    """
     openai = OpenAI(api_key=params.OPENAI_KEY)
+    inferred = 0
+    deferred = 0
     for i, record in enumerate(records):
         if i % 100 == 0:
-            yield dict(msg=f'Ensuring embedding {i}/{len(records)}...')
-        if 'embedding' in record and record['embedding'] and len(record['embedding']) == EMBEDDING_DIMENSION:
+            yield dict(msg=f'Ensuring analysis {i}/{len(records)}...')
+        description = record.get('future_scenario_description')
+        if not description:
             continue
-        if 'future_scenario_description' not in record or not record['future_scenario_description']:
-            continue
-        description = record['future_scenario_description']
-        completion = openai.embeddings.create(
-            model="text-embedding-3-large",
-            input=description
-        )
-        embedding = completion.data[0].embedding
-        record['embedding'] = embedding
         item_id = record['_id']
-        requests.put(f'{params.CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
+
+        if not ('embedding' in record and record['embedding'] and len(record['embedding']) == EMBEDDING_DIMENSION):
+            completion = openai.embeddings.create(
+                model="text-embedding-3-large",
+                input=description
+            )
+            embedding = completion.data[0].embedding
+            record['embedding'] = embedding
+            requests.put(f'{params.CHRONOMAPS_API_URL}/{workspace}/{item_id}', json=dict(embedding=embedding), headers={'Authorization': api_key})
+
+        if record.get('ai_favorable_future') and record.get('ai_plausibility') is not None:
+            continue
+        if inferred >= params.ANALYSIS_BACKFILL_LIMIT:
+            deferred += 1
+            continue
+        favorable_future, plausibility = infer_favorability(openai, description)
+        if favorable_future is None:
+            continue
+        inferred += 1
+        record['ai_favorable_future'] = favorable_future
+        record['ai_plausibility'] = plausibility
+        # Only the two new fields - a full record PUT would reset created_at.
+        requests.put(
+            f'{params.CHRONOMAPS_API_URL}/{workspace}/{item_id}',
+            json=dict(ai_favorable_future=favorable_future, ai_plausibility=plausibility),
+            headers={'Authorization': api_key},
+        )
+    if inferred or deferred:
+        yield dict(msg=f'Backfilled favorability for {inferred} items in {workspace}'
+                       + (f', {deferred} deferred to a later run' if deferred else ''))
 
 def generate_tsne(activations, perplexity=50, tsne_iter=5000):
     tsne = TSNE(perplexity=perplexity, n_components=2, init='random', max_iter=tsne_iter)
@@ -114,10 +192,10 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
         filename = record.get('screenshot_url')
     if filename is not None:
         filename = _normalize_url(filename)
-        rotate = record.get('plausibility') if isinstance(record.get('plausibility'), int) else 100
-        rotate = int(rotate)
-        rotate = (100 - rotate) / 100 * 32
-        favorable_future = record.get('favorable_future')
+        rotate = (100 - resolve_plausibility(record)) / 100 * 32
+        favorable_future = resolve_favorable_future(record)
+        # 'uncertain' - and anything unrecognised - leaves sign at 0, so the
+        # item sits upright rather than leaning either way.
         sign = 0
         if favorable_future == 'yes' or 'prefer' in favorable_future:
             sign = 1
