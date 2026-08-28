@@ -137,7 +137,7 @@ python dropbox_ingest_cli.py --folder "<folder name>"             # for real
 The dry run lists candidates and their batch grouping. It does not download images, so it cannot
 show which will be rejected for their aspect ratio — that appears in the real run.
 
-Once the function is deployed, `dropbox_ingest_scheduled` does this every 5 minutes on its own.
+Once the function is deployed, `dropbox_ingest_scheduled` does this every minute on its own.
 `POST /dropbox_ingest?dry_run=true&folder=<name>` (with an admin Firebase token) runs it on demand.
 
 ---
