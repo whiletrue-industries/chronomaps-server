@@ -262,7 +262,7 @@ def _run_dropbox_ingest(dry_run=False, only_folder=None, full_sweep=False):
         ingest_lock.release(holder)
     return bits
 
-@scheduler_fn.on_schedule(region='europe-west1', schedule="every 5 minutes", secrets=DROPBOX_INGEST_SECRETS, memory=options.MemoryOption.GB_2, timeout_sec=1800)
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every 1 minutes", secrets=DROPBOX_INGEST_SECRETS, memory=options.MemoryOption.GB_2, timeout_sec=1800)
 def dropbox_ingest_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
     print("STARTING dropbox ingest")
     _run_dropbox_ingest()
