@@ -19,6 +19,9 @@ class TSNEParams():
     LOCAL: bool = False
     V_OFFSET: bool = False
     ADD_TITLE: bool = True
+    # Max favorability backfills per workspace per run; the rest wait for the
+    # next run rather than pushing the job past its request timeout.
+    ANALYSIS_BACKFILL_LIMIT: int = 50
 
     OPENAI_KEY: str = None
     CHRONOMAPS_API_URL: str = None

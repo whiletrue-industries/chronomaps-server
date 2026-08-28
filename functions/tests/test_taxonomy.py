@@ -153,9 +153,34 @@ class TestUseItem:
         for value in ('yes', 'prevent', 'mostly_prefer'):
             assert use_item(self.item(favorable_future=value)) is True, value
 
+    def test_accepts_uncertain(self):
+        """'uncertain' is one of the three values the analysis prompt emits.
+
+        It used to be rejected here - none of 'yes'/'no'/'prevent'/'prefer' is a
+        substring of it - which silently dropped every item the model was unsure
+        about. The layout renders it upright rather than leaning either way.
+        """
+        from shared import use_item
+        assert use_item(self.item(favorable_future='uncertain')) is True
+
     def test_rejects_unrecognised_favorable_future(self):
         from shared import use_item
         assert use_item(self.item(favorable_future='maybe')) is False
+
+    def test_falls_back_to_the_ai_inferred_value(self):
+        """Items analysed before the prompt asked for it have only ai_*."""
+        from shared import use_item
+        item = self.item(favorable_future=None)
+        item['ai_favorable_future'] = 'preferred'
+        assert use_item(item) is True
+
+    def test_a_null_favorable_future_still_falls_back(self):
+        """The field is present-but-null on these items, not absent."""
+        from shared import use_item
+        item = self.item(favorable_future=None)
+        item['favorable_future'] = None
+        item['ai_favorable_future'] = 'prevent'
+        assert use_item(item) is True
 
     def test_skips_favorable_future_check_when_not_required(self):
         from shared import use_item
@@ -172,6 +197,54 @@ class TestUseItem:
         from shared import use_item
         assert use_item(self.item(created_at=None)) is False
         assert use_item(self.item(created_at=None), favorable_future_required=False) is False
+
+
+class TestResolveFavorableFuture:
+    """A person's answer outranks the model's inference."""
+
+    def test_human_answer_wins(self):
+        from shared import resolve_favorable_future
+        assert resolve_favorable_future({
+            'favorable_future': 'prevent',
+            'ai_favorable_future': 'preferred',
+        }) == 'prevent'
+
+    def test_falls_back_to_ai(self):
+        from shared import resolve_favorable_future
+        assert resolve_favorable_future({'ai_favorable_future': 'preferred'}) == 'preferred'
+
+    def test_skips_an_unusable_human_answer(self):
+        from shared import resolve_favorable_future
+        assert resolve_favorable_future({
+            'favorable_future': 'maybe',
+            'ai_favorable_future': 'prevent',
+        }) == 'prevent'
+
+    def test_returns_empty_string_not_none(self):
+        """Callers do substring tests on the result; None would raise TypeError."""
+        from shared import resolve_favorable_future
+        assert resolve_favorable_future({}) == ''
+        assert resolve_favorable_future({'favorable_future': None}) == ''
+
+
+class TestResolvePlausibility:
+    def test_human_value_wins(self):
+        from shared import resolve_plausibility
+        assert resolve_plausibility({'plausibility': 40, 'ai_plausibility': 90}) == 40
+
+    def test_skips_the_string_none_older_items_carry(self):
+        from shared import resolve_plausibility
+        assert resolve_plausibility({'plausibility': 'None', 'ai_plausibility': 75}) == 75
+
+    def test_parses_a_numeric_string(self):
+        from shared import resolve_plausibility
+        assert resolve_plausibility({'plausibility': '60'}) == 60
+
+    def test_defaults_to_fully_plausible(self):
+        """The default yields no tilt, matching the previous behaviour."""
+        from shared import resolve_plausibility
+        assert resolve_plausibility({}) == 100
+        assert resolve_plausibility({'plausibility': 'None'}) == 100
 
 
 # --- Tests for taxonomy.naming ---

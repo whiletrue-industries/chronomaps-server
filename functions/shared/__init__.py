@@ -5,13 +5,52 @@ EMBEDDING_DIMENSION = 3072
 EMBEDDING_MODEL = 'text-embedding-3-large'
 
 
+# The vocabulary the analysis prompt emits ('preferred'/'prevent'/'uncertain')
+# plus the yes/no answers the app collects from people.
+FAVORABLE_FUTURE_MARKERS = ('yes', 'no', 'prevent', 'prefer', 'uncertain')
+
+DEFAULT_PLAUSIBILITY = 100
+
+
+def resolve_favorable_future(item):
+    """The item's favorable_future, falling back to the AI-inferred value.
+
+    A person's answer wins over the analysis: `favorable_future` is what the
+    app collected, `ai_favorable_future` is what the model inferred. Items
+    analysed before the model was asked for it have only the latter (or
+    neither). Returns '' rather than None so callers can do substring tests
+    without guarding.
+    """
+    for key in ('favorable_future', 'ai_favorable_future'):
+        value = item.get(key)
+        if isinstance(value, str) and any(m in value for m in FAVORABLE_FUTURE_MARKERS):
+            return value
+    return ''
+
+
+def resolve_plausibility(item, default=DEFAULT_PLAUSIBILITY):
+    """The item's plausibility as an int, falling back to the AI-inferred value.
+
+    Older items store the string 'None' here, so anything unparseable falls
+    through to the next source and finally to `default`.
+    """
+    for key in ('plausibility', 'ai_plausibility'):
+        value = item.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except ValueError:
+                continue
+    return default
+
+
 def use_item(item, favorable_future_required=True):
-    if favorable_future_required:
-        favorable_future = item.get('favorable_future')
-        if not favorable_future:
-            return False
-        if not any(x in favorable_future for x in ['yes', 'no', 'prevent', 'prefer']):
-            return False
+    if favorable_future_required and not resolve_favorable_future(item):
+        return False
     if 'future_scenario_description' not in item or not item['future_scenario_description']:
         return False
     if item.get('created_at') is None:

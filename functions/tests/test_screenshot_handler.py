@@ -117,9 +117,32 @@ class TestAnalyzeImage:
 
         assert record["automatic"] is True
         call_args = mock_openai.chat.completions.create.call_args
-        # In automatic mode without existing metadata, uses AUTOMATIC_INSTRUCTIONS
+        # Both modes share one prompt; automatic only differs by the metadata
+        # block appended at runtime (see test_automatic_with_existing_metadata).
         prompt_text = call_args[1]["messages"][0]["content"][0]["text"]
-        assert "automatic" in prompt_text.lower() or len(prompt_text) > 0
+        assert "favorable_future" in prompt_text
+        assert "absolute truth" not in prompt_text
+
+    def test_always_records_the_inferred_values_under_ai_keys(self, mock_openai):
+        """The model's judgement is kept whichever mode produced it."""
+        from screenshot_handler import analyze_image
+
+        for automatic in (True, False):
+            record = analyze_image(SAMPLE_IMAGE, "image/jpeg", automatic=automatic)
+            assert record["ai_plausibility"] == 75
+            assert record["ai_favorable_future"] == "Positive environmental outlook"
+
+    def test_only_automatic_mode_fills_the_canonical_fields(self, mock_openai):
+        """Manual analysis must not answer a question meant for a person."""
+        from screenshot_handler import analyze_image
+
+        automatic = analyze_image(SAMPLE_IMAGE, "image/jpeg", automatic=True)
+        assert automatic["plausibility"] == 75
+        assert automatic["favorable_future"] == "Positive environmental outlook"
+
+        manual = analyze_image(SAMPLE_IMAGE, "image/jpeg", automatic=False)
+        assert "plausibility" not in manual
+        assert "favorable_future" not in manual
 
     def test_automatic_with_existing_metadata(self, mock_openai):
         from screenshot_handler import analyze_image
