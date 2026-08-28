@@ -3,6 +3,7 @@ import math
 import concurrent.futures
 import queue
 import json
+import traceback
 from pathlib import Path
 from io import BytesIO
 
@@ -65,6 +66,7 @@ def create_tiles(prefix: str, image: Image, params: TSNEParams):
     min_zoom = 8 - zoom_level
     yield dict(msg=f"Tiles: {prefix} ({w}x{h}) -> {num_tiles[0]}x{num_tiles[1]} ({tile_size}px) {zoom_level} zoom levels")
 
+    futures = []
     with ThreadPoolExecutorWithQueueSizeLimit() as executor:
         for z in range(zoom_level):
             zoom = max_zoom - z
@@ -78,8 +80,17 @@ def create_tiles(prefix: str, image: Image, params: TSNEParams):
                 # os.makedirs(f'tiles/{prefix}/{zoom}/{x}', exist_ok=True)
                 yield dict(msg=f"Zoom {zoom}: row {x}/{_num_tiles[0]}")
                 for y in range(_num_tiles[1]):
-                    executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y, params)
+                    futures.append(executor.submit(upload_image, image, tile_size, w, h, prefix, zoom, x, y, params))
                     # target.save(f'tiles/{prefix}/{zoom}/{x}/{y}.png', format='PNG', compress_level=0)
+
+    # A failed upload_image leaves a tile either missing or private (403 for
+    # readers), so don't let it pass silently.
+    errors = [f.exception() for f in futures]
+    errors = [e for e in errors if e is not None]
+    if errors:
+        for error in errors[:5]:
+            traceback.print_exception(type(error), error, error.__traceback__)
+        raise RuntimeError(f'{len(errors)}/{len(futures)} tile uploads failed for {prefix}: {errors[0]!r}')
 
 def extract_cluster_title(client, taglines, previous=None):
     taglines = f'- {"\n- ".join(taglines)}'
@@ -123,8 +134,10 @@ def find_clusters(records, tsne, info):
         (i['id'], i['pos'])
         for i in info['grid']
     )
+    # Records without a screenshot_url end up in the grid with empty metadata,
+    # and records whose image failed to render aren't in the grid at all.
     records_rotations = dict(
-        (i['id'], i['metadata']['rotate'])
+        (i['id'], i['metadata'].get('rotate', 0))
         for i in info['grid']
     )
     for _label in all_labels:
@@ -141,20 +154,24 @@ def find_clusters(records, tsne, info):
         if count < 3:
             break
         yield dict(msg=f'Cluster {label} size: {count}, {count / len(records) * 100:.2f}% of total')
+        cluster_positions = [
+            record_positions[member['_id']]
+            for member in members
+            if member['_id'] in record_positions
+        ]
+        if not cluster_positions:
+            yield dict(msg=f'Cluster {label}: no members made it onto the grid, skipping')
+            continue
         taglines = [member['future_scenario_description'] for member in members]
 
         title = extract_cluster_title(client, taglines, previous)
         previous.append(title['english'])
-        cluster_positions = [
-            record_positions[member['_id']]
-            for member in members
-        ]
         cluster_positions_bounds = [
             [min([pos[0] for pos in cluster_positions]) , min([pos[1] for pos in cluster_positions]) ],
             [max([pos[0] for pos in cluster_positions]) + 1, max([pos[1] for pos in cluster_positions]) + 1]
         ]
         cluster_rotations = [
-            records_rotations[member['_id']]
+            records_rotations.get(member['_id'], 0)
             for member in members
         ]
         cluster_average_rotation = sum(cluster_rotations) / len(cluster_rotations)
@@ -277,4 +294,10 @@ def cluster_screenshots_all(config_tag_tuples, add_title=False, if_changed=True)
                 collection.id
             ))
     for config, tag in config_tag_tuples:
-        yield from cluster_screenshots(config, tag=tag, add_title=add_title, if_changed=if_changed)
+        # One bad workspace used to abort the whole batch, leaving every workspace
+        # after it un-regenerated.
+        try:
+            yield from cluster_screenshots(config, tag=tag, add_title=add_title, if_changed=if_changed)
+        except Exception as e:
+            traceback.print_exc()
+            yield dict(msg=f'FAILED to cluster {tag}: {e!r}')
