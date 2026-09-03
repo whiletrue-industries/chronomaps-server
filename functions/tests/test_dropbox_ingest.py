@@ -19,6 +19,7 @@ from dropbox_ingest import (
     derive_handler_url, empty_state, entry_key, find_config_entry, folder_created_at,
     is_known, merge_batches, merge_states, parse_credentials, process_folder, read_state,
     run_ingest, scan_time, upload_scan, write_state, MAX_FILE_ATTEMPTS,
+    DEFAULT_BATCH_GAP_SECONDS, DEFAULT_MAX_UPLOADS_PER_RUN,
 )
 from dropbox_ingest.dropbox_api import (
     DropboxClient, DropboxConflict, DropboxCursorReset, DropboxError, team_namespace_id,
@@ -161,6 +162,20 @@ class TestParseCredentials:
         assert config.max_uploads_per_run == 5
         assert config.time_source == 'server'
         assert config.rotate_landscape == 'cw'
+
+    def test_defaults_when_the_file_only_names_the_workspace(self):
+        """Pins the shipped defaults so changing one is a deliberate edit here.
+
+        These reach every folder that does not override them, and the batching
+        ones decide whether a person's pages become one author or several.
+        """
+        config = parse_credentials('workspace: ws\napi_key: key\n')
+        assert config.enabled is True
+        assert config.ignore_cutoff is False
+        assert config.batch_gap_seconds == DEFAULT_BATCH_GAP_SECONDS
+        assert config.max_uploads_per_run == DEFAULT_MAX_UPLOADS_PER_RUN
+        assert config.time_source == 'auto'
+        assert config.rotate_landscape == 'off'
 
     def test_missing_fields_rejected(self):
         with pytest.raises(ConfigurationError):
@@ -562,8 +577,14 @@ class TestUploadScan:
 class FolderFixture:
     """A Dropbox folder with a credentials file and a few scans."""
 
-    def __init__(self, files=(), config_text='workspace: ws-1\napi_key: key-1\n',
+    # batch_gap_seconds is pinned so these cases test the batching rule rather
+    # than whatever DEFAULT_BATCH_GAP_SECONDS happens to be; a test that cares
+    # about the default passes its own config_text.
+    DEFAULT_CONFIG_TEXT = 'workspace: ws-1\napi_key: key-1\nbatch_gap_seconds: 120\n'
+
+    def __init__(self, files=(), config_text=None,
                  created='2026-08-24T09:00:00Z', state=None):
+        config_text = config_text if config_text is not None else self.DEFAULT_CONFIG_TEXT
         self.folder = folder_entry('/archive/ws')
         entries = [file_entry('/archive/ws/chronomaps.config', server_modified=created)]
         stored = {'/archive/ws/chronomaps.config': (config_text.encode(), 'rev-config')}
