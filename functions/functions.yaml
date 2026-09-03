@@ -5,8 +5,7 @@
 #   * a new @https_fn / @scheduler_fn function is NOT deployed until it is
 #     listed here - the deploy succeeds and simply omits it, silently;
 #   * the values here win over the decorator, including `schedule` (note that
-#     enhance_all_daily and cluster_its_time run far less often here than
-#     main.py suggests).
+#     enhance_all_daily still runs far less often here than main.py suggests).
 # Keep an entry in sync with its decorator, or delete this file to go back to
 # discovery - but check the schedules before you do.
 endpoints:
@@ -74,7 +73,7 @@ endpoints:
     - europe-west1
     scheduleTrigger:
       retryConfig: {}
-      schedule: every friday 03:00
+      schedule: every 15 minutes
     secretEnvironmentVariables:
     - key: CHRONOMAPS_API_URL
     - key: OPENAI_API_KEY
@@ -264,7 +263,7 @@ endpoints:
     - europe-west1
     scheduleTrigger:
       retryConfig: {}
-      schedule: every 5 minutes
+      schedule: every 1 minutes
     secretEnvironmentVariables:
     - key: SERVICE_ACCOUNT_JSON
     - key: CHRONOMAPS_API_URL
