@@ -227,7 +227,7 @@ def enhance_all(req: https_fn.Request) -> https_fn.Response:
             yield f"data: {json.dumps([delta, bit], ensure_ascii=False)}\n\n"
     return https_fn.Response(generate(), status=200, mimetype='text/event-stream')
 
-@scheduler_fn.on_schedule(region='europe-west1', schedule="every 15 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
+@scheduler_fn.on_schedule(region='europe-west1', schedule="every 5 minutes", secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY', 'CONFIG__ITS_TIME'], memory=options.MemoryOption.GB_8)
 def cluster_its_time(event: scheduler_fn.ScheduledEvent) -> None:
     config_tags_tuples = []
     print("STARTING clustering all workspaces")

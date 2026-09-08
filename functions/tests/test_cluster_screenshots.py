@@ -155,9 +155,34 @@ class TestClusterScreenshotsInnerFallback:
             actions = _run(records, params)
 
         tsne.assert_called_once()
+        assert tsne.call_args.kwargs['perplexity'] == params.perplexity_for(10)
         lap.assert_called_once()
         # Clustering and titling are left to find_clusters downstream.
         assert 'clusters' not in actions['clusters']['info']
+
+
+class TestPerplexity:
+    """Perplexity scales with the set: a fixed 50 capped at n-1 flattens small maps."""
+
+    @pytest.mark.parametrize('count, expected', [
+        (10, 5),     # floor: n/3 would be 3, which is too few neighbours to be meaningful
+        (11, 5),     # the case that prompted this: was 10 of 11, i.e. everyone is a neighbour
+        (15, 5),
+        (30, 10),
+        (90, 30),
+        (150, 50),   # ceiling
+        (500, 50),
+    ])
+    def test_scales_with_record_count(self, count, expected):
+        assert TSNEParams().perplexity_for(count) == expected
+
+    @pytest.mark.parametrize('count', [2, 3, 5, 6])
+    def test_always_below_the_record_count(self, count):
+        # t-SNE refuses perplexity >= n; the floor must give way to that.
+        assert 1 <= TSNEParams().perplexity_for(count) < count
+
+    def test_ceiling_is_configurable(self):
+        assert TSNEParams(PERPLEXITY=20).perplexity_for(500) == 20
 
 
 class TestAnalysisRunsRegardlessOfCount:

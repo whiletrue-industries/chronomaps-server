@@ -440,8 +440,9 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
         grid = fallback_grid(len(records), params.OUT_DIM)
     else:
         activations = [rec['embedding'] for rec in records]
-        yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-        X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
+        perplexity = params.perplexity_for(len(records))
+        yield dict(msg=f'Generating 2D representation from {len(records)} records (perplexity {perplexity}).')
+        X_2d = generate_tsne(activations, perplexity=perplexity, tsne_iter=params.TSNE_ITER)
         yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
         grid = calc_tsne_grid(X_2d, params.OUT_DIM)
         grid = grid[:len(records)]

@@ -5,7 +5,14 @@ from dataclasses import dataclass
 @dataclass
 class TSNEParams():
     EMBEDDING_DIMENSION: int = 3072
+    # Perplexity is roughly how many neighbours each point attends to. It is
+    # scaled with the record count (about a third of it, between MIN_PERPLEXITY
+    # and PERPLEXITY): a fixed 50 capped at n-1 meant that a small set had every
+    # point attending to every other, so t-SNE spread them out evenly and no
+    # clusters could form.
     PERPLEXITY: int = 50
+    MIN_PERPLEXITY: int = 5
+    PERPLEXITY_FRACTION: float = 1 / 3
     TSNE_ITER: int = 5000
     ORIGINAL_IMAGE_SIZE: int = (530, 1000)
     CELL_RATIOS: int = (1.86, 1.135)
@@ -33,6 +40,11 @@ class TSNEParams():
         self.OUT_DIM_Y = int(round(self.OUT_DIM_X * self.ORIGINAL_IMAGE_SIZE[0] * self.CELL_RATIOS[0] * self.OUT_RATIO / (self.ORIGINAL_IMAGE_SIZE[1] * self.CELL_RATIOS[1])))
         self.OUT_DIM = (self.OUT_DIM_X, self.OUT_DIM_Y)
         self.TO_PLOT = int(self.OUT_DIM_X * self.OUT_DIM_Y * self.FILL_RATIO)
+
+    def perplexity_for(self, num_records):
+        """Perplexity for a set of num_records, always below the count (t-SNE requires it)."""
+        scaled = int(num_records * self.PERPLEXITY_FRACTION)
+        return max(1, min(max(self.MIN_PERPLEXITY, scaled), self.PERPLEXITY, num_records - 1))
 
     def __str__(self):
         return f"TSNEParams(TAG={self.TAG}," +\
