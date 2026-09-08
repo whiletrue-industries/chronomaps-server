@@ -10,9 +10,12 @@ Flow, per run:
    syncing are grouped into scan batches by time gap; every image in a batch
    gets the same `author_id`.
 4. Each image is centre-cropped to the 0.53:1 page ratio (or rejected), then
-   uploaded through the same endpoints the screenshots app uses in auto mode:
-   POST screenshot_handler?automatic=true, then PUT the bookkeeping metadata.
+   uploaded through the same endpoint the screenshots app uses in auto mode:
+   POST screenshot_handler?automatic=true, with the bookkeeping metadata in a
+   form field the handler stores on the item as it creates it.
 5. The state file in the Dropbox folder is updated so nothing is uploaded twice.
+   A file whose upload failed is retried on a later run; before re-posting, the
+   workspace is searched for an item that the failed attempt created anyway.
 
 Everything is driven by injected settings/client objects so the flow can run
 from the scheduled Cloud Function, the HTTP trigger or the local CLI.
@@ -283,6 +286,12 @@ def merge_states(remote, local):
         combined = dict(remote.get(key) or {})
         combined.update(local.get(key) or {})
         merged[key] = combined
+    # A file that either side has settled is no longer failed, whatever the
+    # other side's copy says — otherwise a retry that succeeded would come back
+    # from the merge still carrying its failure.
+    for key in list(merged['failed']):
+        if key in merged['files'] or key in merged['skipped']:
+            del merged['failed'][key]
     merged['version'] = STATE_VERSION
     merged['workspace'] = local.get('workspace') or remote.get('workspace')
     merged.pop('last_batch', None)
@@ -480,15 +489,20 @@ def _now():
 def upload_scan(settings, config, image_bytes, filename, author_id, metadata, session=None):
     """Upload one prepared image, the same way the app does in auto mode.
 
-    POST to the screenshot handler with `automatic=true` (which analyses the
-    image and creates the item), then PUT the bookkeeping metadata onto the new
-    item — deliberately not via the handler's `metadata` form field, which is
-    fed to the vision prompt as user-provided truth.
+    POST to the screenshot handler with `automatic=true`, which analyses the
+    image and creates the item. The bookkeeping metadata (author, source path,
+    `source_ref`) goes in the `bookkeeping` form field, which the handler writes
+    onto the item in the same request that creates it — deliberately not the
+    `metadata` form field, which is fed to the vision prompt as user-provided
+    truth. Labelling the item as it is created means that when the handler dies
+    after creating it (the response is a 503), the item is still findable by
+    `source_ref` rather than being a nameless duplicate.
     """
     http = session or requests
     response = http.post(
         settings.screenshot_handler_url,
         files={'image': (filename, BytesIO(image_bytes), 'image/jpeg')},
+        data={'bookkeeping': json.dumps(dict(metadata, author_id=author_id))},
         params={'workspace': config.workspace, 'api_key': config.api_key, 'automatic': 'true'},
         timeout=UPLOAD_TIMEOUT,
     )
@@ -499,21 +513,27 @@ def upload_scan(settings, config, image_bytes, filename, author_id, metadata, se
     item_key = payload.get('item_key') or (payload.get('metadata') or {}).get('item_key')
     if not item_id:
         raise RuntimeError(f'screenshot_handler returned no item_id: {str(payload)[:500]}')
+    return item_id, item_key
 
-    # Mirrors screenshot_handler.update_item, without pulling in its Firebase deps.
-    update = http.put(
-        f'{settings.chronomaps_api_url}/{config.workspace}/{item_id}',
-        json=dict(metadata, author_id=author_id),
+
+def find_existing_item(settings, config, source_ref, session=None):
+    """The item an earlier attempt created for this scan, or None.
+
+    A handler that is killed after creating the item answers with a 503, which
+    is indistinguishable from "nothing was created". Since the bookkeeping is
+    written at creation, the workspace can be asked instead of guessing.
+    """
+    http = session or requests
+    response = http.get(
+        f'{settings.chronomaps_api_url}/{config.workspace}/items',
+        params={'filters': f'metadata.source_ref=={json.dumps(source_ref)}', 'page_size': 1},
         headers={'Authorization': config.api_key},
-        params={'item-key': item_key} if item_key else None,
         timeout=UPLOAD_TIMEOUT,
     )
-    # The item already exists at this point, so a failed PUT is reported rather
-    # than raised: retrying the upload would create a duplicate item.
-    metadata_error = None
-    if update.status_code >= 400:
-        metadata_error = f'metadata update returned {update.status_code}: {update.text[:500]}'
-    return item_id, item_key, metadata_error
+    if response.status_code != 200:
+        raise RuntimeError(f'item lookup returned {response.status_code}: {response.text[:500]}')
+    items = response.json()
+    return items[0] if items else None
 
 
 # -- per-folder flow --------------------------------------------------------
@@ -607,12 +627,16 @@ def process_folder(client, folder, settings, dry_run=False, now=None, session=No
                        scanned_at=_iso(stamp), author_id=author_id)
         return
 
+    # Files with a failed attempt behind them: the attempt may have created an
+    # item without getting to say so.
+    retrying = {entry_key(e) for e, _stamp, _author in capped if entry_key(e) in state['failed']}
+
     processed = 0
     for chunk in _chunks(capped, STATE_FLUSH_EVERY):
         if deadline is not None and time.monotonic() > deadline:
             yield dict(folder=name, action='deadline', deferred=len(capped) - processed)
             break
-        results = _process_chunk(client, chunk, config, settings, session, name)
+        results = _process_chunk(client, chunk, config, settings, session, name, retrying=retrying)
         for result in results:
             _record(state, result, now)
             processed += 1
@@ -625,12 +649,30 @@ def process_folder(client, folder, settings, dry_run=False, now=None, session=No
     yield dict(folder=name, action='folder-done', uploaded=processed)
 
 
-def _process_chunk(client, chunk, config, settings, session, folder_name):
-    """Download, crop and upload a chunk of scans concurrently."""
+def _process_chunk(client, chunk, config, settings, session, folder_name, retrying=frozenset()):
+    """Download, crop and upload a chunk of scans concurrently.
+
+    `retrying` holds the keys of scans a previous run failed on; those are
+    looked up in the workspace first, in case the failed attempt created the
+    item after all.
+    """
     def handle(assignment):
         entry, stamp, author_id = assignment
+        source_ref = entry_key(entry)
         base = dict(folder=folder_name, workspace=config.workspace, path=entry.get('path_display'),
-                    content_hash=entry_key(entry), scanned_at=_iso(stamp), author_id=author_id)
+                    content_hash=source_ref, scanned_at=_iso(stamp), author_id=author_id)
+        if source_ref in retrying:
+            try:
+                existing = find_existing_item(settings, config, source_ref, session)
+            except Exception as e:                              # noqa: BLE001 - best effort; uploading is the fallback
+                existing = None
+                base['lookup_error'] = f'{type(e).__name__}: {e}'
+            if existing:
+                # The earlier attempt did create it; adopt that item rather than
+                # make a second one. Its author is whoever it was filed under.
+                return dict(base, action='uploaded', recovered=True,
+                            item_id=existing.get('_id'), item_key=existing.get('_key'),
+                            author_id=existing.get('author_id') or author_id)
         try:
             data = client.download(entry['path_display'])
             expected = entry.get('size')
@@ -647,18 +689,16 @@ def _process_chunk(client, chunk, config, settings, session, folder_name):
             return dict(base, action='error', error=f'{type(e).__name__}: {e}')
 
         try:
-            item_id, item_key, metadata_error = upload_scan(
+            item_id, item_key = upload_scan(
                 settings, config, image_bytes, entry['name'], author_id,
-                metadata=dict(source='dropbox', dropbox_path=entry.get('path_display'),
+                metadata=dict(source='dropbox', source_ref=source_ref,
+                              dropbox_path=entry.get('path_display'),
                               dropbox_content_hash=entry.get('content_hash'),
                               scanned_at=_iso(stamp)),
                 session=session)
         except Exception as e:                                  # noqa: BLE001 - reported, retried next run
             return dict(base, action='error', error=f'{type(e).__name__}: {e}')
-        result = dict(base, action='uploaded', item_id=item_id, item_key=item_key, **info)
-        if metadata_error:
-            result['metadata_error'] = metadata_error
-        return result
+        return dict(base, action='uploaded', item_id=item_id, item_key=item_key, **info)
 
     with ThreadPoolExecutor(max_workers=UPLOAD_WORKERS) as pool:
         return list(pool.map(handle, chunk))
@@ -671,13 +711,11 @@ def _record(state, result, now):
         return
     stamp = _iso(now)
     if result['action'] == 'uploaded':
-        # Recorded even when the metadata PUT failed: the item exists, so a
-        # retry would duplicate it rather than repair it.
         record = dict(path=result.get('path'), item_id=result.get('item_id'),
                       author_id=result.get('author_id'),
                       scanned_at=result.get('scanned_at'), uploaded_at=stamp)
-        if result.get('metadata_error'):
-            record['metadata_error'] = result['metadata_error']
+        if result.get('recovered'):
+            record['recovered'] = True
         state['files'][content_hash] = record
         state['failed'].pop(content_hash, None)
     elif result['action'] == 'skip-image':

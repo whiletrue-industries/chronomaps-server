@@ -307,6 +307,27 @@ class TestScreenshotHandler:
         call_kwargs = mock_enhance_image.call_args[1]
         assert "screenshot_url" in call_kwargs
 
+    def test_bookkeeping_is_stored_at_creation_and_hidden_from_the_model(
+            self, mock_openai, mock_api_requests, mock_storage):
+        """A caller whose response is lost must still find its item by these fields."""
+        from screenshot_handler import screenshot_handler
+
+        screenshot_handler(
+            image_bytes=SAMPLE_IMAGE,
+            workspace="ws",
+            api_key="key",
+            image_content_type="image/jpeg",
+            bookkeeping={"source": "dropbox", "source_ref": "hash-1", "author_id": "batch-1"},
+        )
+
+        created = mock_api_requests.post.call_args.kwargs["json"]
+        assert created["source"] == "dropbox"
+        assert created["source_ref"] == "hash-1"
+        assert created["author_id"] == "batch-1"
+        assert created["screenshot_type"] == "social_media_post", "analysis is kept alongside"
+        prompt = json.dumps(mock_openai.chat.completions.create.call_args.kwargs, default=str)
+        assert "hash-1" not in prompt and "batch-1" not in prompt
+
     def test_returns_error_if_workspace_not_found(self, mock_openai, mock_api_requests, mock_storage):
         from screenshot_handler import screenshot_handler
 

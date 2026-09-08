@@ -46,7 +46,12 @@ def chronomaps_api(req: https_fn.Request) -> https_fn.Response:
     with chronomaps_api_app.request_context(environ):
         return chronomaps_api_app.full_dispatch_request()
     
-@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
+# The Dropbox ingest posts four scans at a time. Four concurrent analyses on one
+# 512 MB instance ran it to 570-580 MiB (2026-09-08) and Cloud Run killed it
+# mid-request, after the item was created but before the client heard so: the
+# caller got a 503 and re-uploaded. Memory for the analyses; a concurrency cap
+# so a burst cannot stack more of them on one instance than that memory holds.
+@https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['OPENAI_API_KEY', 'CHRONOMAPS_API_URL'], memory=options.MemoryOption.GB_1, concurrency=4)
 def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     # Get the request data
     # Workspace and api_key from query parameters:
@@ -66,8 +71,11 @@ def screenshot_handler(req: https_fn.Request) -> https_fn.Response:
     # Read optional user-provided metadata from form fields
     user_metadata_raw = req.form.get('metadata')
     user_metadata = json.loads(user_metadata_raw) if user_metadata_raw else None
+    # Bookkeeping is stored on the item as-is and never shown to the model.
+    bookkeeping_raw = req.form.get('bookkeeping')
+    bookkeeping = json.loads(bookkeeping_raw) if bookkeeping_raw else None
 
-    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type, user_metadata=user_metadata)
+    return screenshot_handler_fn(image_bytes=image_bytes, workspace=workspace, api_key=api_key, automatic=automatic, image_content_type=content_type, user_metadata=user_metadata, bookkeeping=bookkeeping)
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL'], memory=options.MemoryOption.MB_512)
 def replace_image(req: https_fn.Request) -> https_fn.Response:
