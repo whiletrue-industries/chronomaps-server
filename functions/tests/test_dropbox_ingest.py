@@ -18,7 +18,7 @@ from dropbox_ingest import (
     ConfigurationError, FolderConfig, Settings, assign_batches, batches_from, group_entries,
     derive_handler_url, empty_state, entry_key, find_config_entry, folder_created_at,
     is_known, merge_batches, merge_states, parse_credentials, process_folder, read_state,
-    run_ingest, scan_time, upload_scan, write_state, MAX_FILE_ATTEMPTS,
+    run_ingest, scan_time, upload_scan, find_existing_item, write_state, MAX_FILE_ATTEMPTS,
     DEFAULT_BATCH_GAP_SECONDS, DEFAULT_MAX_UPLOADS_PER_RUN,
 )
 from dropbox_ingest.dropbox_api import (
@@ -458,6 +458,14 @@ class TestState:
 
 
 # -- image preparation ------------------------------------------------------
+    def test_merge_drops_failures_that_either_side_has_settled(self):
+        remote = dict(empty_state('ws'), failed={'h1': {'attempts': 1}, 'h2': {'attempts': 1}})
+        local = dict(empty_state('ws'), files={'h1': {'item_id': 'i1'}}, skipped={'h2': {'reason': 'r'}},
+                     failed={'h3': {'attempts': 2}})
+        merged = merge_states(remote, local)
+        assert merged['failed'] == {'h3': {'attempts': 2}}
+        assert set(merged['files']) == {'h1'} and set(merged['skipped']) == {'h2'}
+
 
 class TestPrepareImage:
     def test_exact_ratio_passes_through(self):
@@ -521,39 +529,36 @@ class TestPrepareImage:
 # -- upload -----------------------------------------------------------------
 
 class TestUploadScan:
-    def _session(self, post_payload=None, post_status=200, put_status=200):
+    def _session(self, post_payload=None, post_status=200):
         session = Mock()
         post_response = Mock(status_code=post_status, text='')
         post_response.json.return_value = post_payload or {'item_id': 'item-1', 'item_key': 'key-1'}
         session.post.return_value = post_response
-        session.put.return_value = Mock(status_code=put_status, text='')
         return session
 
-    def test_posts_in_automatic_mode_and_puts_author_id(self):
+    def test_posts_in_automatic_mode_with_bookkeeping(self):
         session = self._session()
         config = FolderConfig(workspace='ws-1', api_key='api-key')
-        item_id, item_key, metadata_error = upload_scan(
+        item_id, item_key = upload_scan(
             make_settings(), config, b'jpeg', 'page.jpg', 'author-9',
-            {'source': 'dropbox'}, session=session)
+            {'source': 'dropbox', 'source_ref': 'hash-1'}, session=session)
 
-        assert (item_id, item_key, metadata_error) == ('item-1', 'key-1', None)
-        post_params = session.post.call_args.kwargs['params']
-        assert post_params == {'workspace': 'ws-1', 'api_key': 'api-key', 'automatic': 'true'}
-        assert 'image' in session.post.call_args.kwargs['files']
+        assert (item_id, item_key) == ('item-1', 'key-1')
+        post_kwargs = session.post.call_args.kwargs
+        assert post_kwargs['params'] == {'workspace': 'ws-1', 'api_key': 'api-key', 'automatic': 'true'}
+        assert 'image' in post_kwargs['files']
+        bookkeeping = json.loads(post_kwargs['data']['bookkeeping'])
+        assert bookkeeping == {'source': 'dropbox', 'source_ref': 'hash-1', 'author_id': 'author-9'}
+        # Everything the item needs travels with the creating request: a lost
+        # response must not leave an unlabelled item behind.
+        assert not session.put.called
 
-        put_args = session.put.call_args
-        assert put_args.args[0] == 'https://api.example.com/ws-1/item-1'
-        assert put_args.kwargs['json']['author_id'] == 'author-9'
-        assert put_args.kwargs['json']['source'] == 'dropbox'
-        assert put_args.kwargs['headers'] == {'Authorization': 'api-key'}
-        assert put_args.kwargs['params'] == {'item-key': 'key-1'}
-
-    def test_metadata_is_not_sent_to_the_vision_prompt(self):
+    def test_bookkeeping_is_not_sent_to_the_vision_prompt(self):
         """Bookkeeping fields must not ride along in the handler's `metadata` form field."""
         session = self._session()
         upload_scan(make_settings(), FolderConfig(workspace='ws', api_key='k'), b'jpeg', 'p.jpg',
                     'author', {'source': 'dropbox'}, session=session)
-        assert 'data' not in session.post.call_args.kwargs
+        assert set(session.post.call_args.kwargs['data']) == {'bookkeeping'}
         assert set(session.post.call_args.kwargs['files']) == {'image'}
 
     def test_handler_failure_raises(self):
@@ -562,14 +567,34 @@ class TestUploadScan:
             upload_scan(make_settings(), FolderConfig(workspace='ws', api_key='k'), b'x', 'p.jpg',
                         'a', {}, session=session)
 
-    def test_metadata_failure_is_reported_not_raised(self):
-        """The item already exists — raising would make the next run duplicate it."""
-        session = self._session(put_status=500)
-        item_id, _key, metadata_error = upload_scan(
-            make_settings(), FolderConfig(workspace='ws', api_key='k'), b'x', 'p.jpg',
-            'a', {}, session=session)
-        assert item_id == 'item-1'
-        assert 'metadata update returned 500' in metadata_error
+
+class TestFindExistingItem:
+    def test_queries_the_workspace_by_source_ref(self):
+        session = Mock()
+        session.get.return_value = Mock(status_code=200)
+        session.get.return_value.json.return_value = [{'_id': 'item-7', 'author_id': 'a'}]
+        found = find_existing_item(make_settings(), FolderConfig(workspace='ws-1', api_key='k'),
+                                   'hash-1', session=session)
+        assert found == {'_id': 'item-7', 'author_id': 'a'}
+        get = session.get.call_args
+        assert get.args[0] == 'https://api.example.com/ws-1/items'
+        # Quoted, so a hash that happens to be all digits is not parsed as a number.
+        assert get.kwargs['params']['filters'] == 'metadata.source_ref=="hash-1"'
+        assert get.kwargs['headers'] == {'Authorization': 'k'}
+
+    def test_none_when_nothing_matches(self):
+        session = Mock()
+        session.get.return_value = Mock(status_code=200)
+        session.get.return_value.json.return_value = []
+        assert find_existing_item(make_settings(), FolderConfig(workspace='ws', api_key='k'),
+                                  'hash-1', session=session) is None
+
+    def test_api_failure_raises(self):
+        session = Mock()
+        session.get.return_value = Mock(status_code=500, text='boom')
+        with pytest.raises(RuntimeError):
+            find_existing_item(make_settings(), FolderConfig(workspace='ws', api_key='k'),
+                               'hash-1', session=session)
 
 
 # -- folder flow ------------------------------------------------------------
@@ -630,7 +655,8 @@ def upload_session():
         return response
 
     session.post.side_effect = post
-    session.put.return_value = Mock(status_code=200, text='')
+    session.get.return_value = Mock(status_code=200)
+    session.get.return_value.json.return_value = []
     return session
 
 
@@ -747,31 +773,61 @@ class TestProcessFolder:
 class TestPartialFailures:
     """Cases where an image could be uploaded twice, or lost entirely."""
 
-    def test_failed_metadata_put_does_not_re_upload_next_run(self):
-        session = Mock()
-        post_response = Mock(status_code=200, text='')
-        post_response.json.return_value = {'item_id': 'item-a', 'item_key': 'k'}
-        session.post.return_value = post_response
-        session.put.return_value = Mock(status_code=500, text='nope')
+    FILE = ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')
 
-        fixture = FolderFixture(files=[
-            ('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z'),
-        ])
+    def _failed_once(self):
+        """The state after a run whose upload of a.jpg got a 503."""
+        return dict(empty_state('ws-1'), failed={'hash-a.jpg': {
+            'path': '/archive/ws/a.jpg', 'attempts': 1, 'at': '2026-08-25T10:05:00Z',
+            'error': 'RuntimeError: screenshot_handler returned 503: Service Unavailable'}})
+
+    def test_retry_adopts_the_item_the_failed_attempt_created(self):
+        """A handler killed after creating the item answers 503; the item is still there."""
+        session = upload_session()
+        session.get.return_value.json.return_value = [
+            {'_id': 'item-from-before', 'author_id': 'author-from-before', 'source_ref': 'hash-a.jpg'}]
+        fixture = FolderFixture(files=[self.FILE], state=self._failed_once())
         results = fixture.run(session=session)
 
         uploaded = [r for r in results if r['action'] == 'uploaded']
-        assert len(uploaded) == 1 and 'metadata update returned 500' in uploaded[0]['metadata_error']
-        record = fixture.state()['files']['hash-a.jpg']
-        assert record['item_id'] == 'item-a'
-        assert 'metadata_error' in record, 'visible to a human, but never retried'
+        assert len(uploaded) == 1 and uploaded[0]['recovered'] is True
+        assert uploaded[0]['item_id'] == 'item-from-before'
+        assert uploaded[0]['author_id'] == 'author-from-before', 'filed under its original batch'
+        assert session.post.call_count == 0, 'no second item'
+        assert session.get.call_args.kwargs['params']['filters'] == 'metadata.source_ref=="hash-a.jpg"'
 
-        # Second run over the same folder: the item exists, so nothing is re-posted.
-        second = FolderFixture(
-            files=[('a.jpg', image_bytes(530, 1000), '2026-08-25T10:00:00Z', '2026-08-25T10:00:20Z')],
-            state=fixture.state())
-        session.post.reset_mock()
-        second.run(session=session)
-        assert session.post.call_count == 0
+        state = fixture.state()
+        assert state['files']['hash-a.jpg']['item_id'] == 'item-from-before'
+        assert state['files']['hash-a.jpg']['recovered'] is True
+        assert 'hash-a.jpg' not in state['failed']
+
+    def test_retry_uploads_when_no_item_was_created(self):
+        session = upload_session()
+        fixture = FolderFixture(files=[self.FILE], state=self._failed_once())
+        results = fixture.run(session=session)
+
+        uploaded = [r for r in results if r['action'] == 'uploaded']
+        assert len(uploaded) == 1 and 'recovered' not in uploaded[0]
+        assert session.get.call_count == 1 and session.post.call_count == 1
+        assert fixture.state()['files']['hash-a.jpg']['item_id'] == 'item-a'
+
+    def test_retry_uploads_when_the_lookup_itself_fails(self):
+        """The lookup is a safeguard, not a gate: the API being down must not stall the file."""
+        session = upload_session()
+        session.get.return_value = Mock(status_code=500, text='down')
+        fixture = FolderFixture(files=[self.FILE], state=self._failed_once())
+        results = fixture.run(session=session)
+
+        uploaded = [r for r in results if r['action'] == 'uploaded']
+        assert len(uploaded) == 1 and 'item lookup returned 500' in uploaded[0]['lookup_error']
+        assert session.post.call_count == 1
+
+    def test_first_attempt_does_not_look_up(self):
+        """Only a file with a failed attempt behind it can have a hidden item."""
+        session = upload_session()
+        fixture = FolderFixture(files=[self.FILE])
+        fixture.run(session=session)
+        assert session.get.call_count == 0 and session.post.call_count == 1
 
     def test_duplicate_content_in_one_listing_uploads_once(self):
         """Conflicted copies share a content hash — and the state file has one record per hash."""

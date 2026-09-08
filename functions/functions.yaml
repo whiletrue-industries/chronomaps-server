@@ -115,8 +115,8 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: 60
   screenshot_handler:
-    availableMemoryMb: 512
-    concurrency: null
+    availableMemoryMb: 1024
+    concurrency: 4
     entryPoint: screenshot_handler
     httpsTrigger: {}
     ingressSettings: null

@@ -101,6 +101,11 @@ open it can read that file. `parse_credentials` is the parser to match when gene
 Runs hold a Firestore lease (`dropbox_ingest/lock.py`), so overlapping invocations are safe
 — a second one logs `action: skipped` and exits.
 
+Provenance (`source`, `source_ref`, `author_id`, …) travels in the screenshot handler's
+`bookkeeping` form field and is stored **as the item is created**. That is what lets a retry
+find the item a killed handler created (it answered 503 after writing it) instead of making a
+second one — so do not move that data back to a follow-up `PUT`.
+
 ## Conventions
 
 - Errors that abort a per-item or per-workspace loop should be contained so one bad record

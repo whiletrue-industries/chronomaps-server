@@ -234,14 +234,21 @@ def download_item_image(workspace, item_id):
     return image_bytes, content_type
 
 
-def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', user_metadata=None):
-    """Full flow: analyze image, create new item, upload image."""
+def screenshot_handler(image_bytes, workspace, api_key, automatic=False, image_content_type='image/jpeg', user_metadata=None, bookkeeping=None):
+    """Full flow: analyze image, create new item, upload image.
+
+    `user_metadata` is shown to the model as user-provided truth; `bookkeeping`
+    is not — it is written onto the item verbatim, in the same request that
+    creates it, so a caller whose response is lost can still find its item.
+    """
     record = analyze_image(image_bytes, image_content_type, automatic=automatic, user_metadata=user_metadata)
 
     # Override AI-generated values with user-provided ones so they are preserved
     if user_metadata:
         record['_original_ai_analysis'] = {k: v for k, v in record.items() if k in user_metadata}
         record.update(user_metadata)
+    if bookkeeping:
+        record.update(bookkeeping)
 
     moderation_result = get_workspace_moderation(workspace, api_key)
     if isinstance(moderation_result[0], dict) and 'error' in moderation_result[0]:

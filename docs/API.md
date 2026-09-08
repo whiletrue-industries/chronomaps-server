@@ -680,7 +680,10 @@ POST /screenshot_handler?workspace=<id>&api_key=<key>&automatic=<bool>
 - `api_key` (required): Workspace admin or collaborate key
 - `automatic` (optional): Use automatic mode (true/false)
 
-**Request Body**: Image file
+**Form Fields**:
+- `image` (required): The image file
+- `metadata` (optional): JSON object of user-provided values. These are shown to the vision model as ground truth and override the corresponding analysed values.
+- `bookkeeping` (optional): JSON object stored on the item verbatim, in the same request that creates it. Never shown to the model. Use it for provenance fields (`source`, `source_ref`, `author_id`, …) that a caller needs on the item even if it never sees the response — the item can then be found with `GET /<workspace>/items?filters=metadata.source_ref=="…"`.
 
 **Description**: Analyzes screenshot using GPT-5.4 Vision model to extract structured information including screenshot type, content, future scenario details, and more. Always creates a new item. After creation, automatically generates the item's semantic embedding and assigns taxonomy topics (if a taxonomy exists). To update an existing item's image or re-analyze it, use the `replace_image` or `reanalyze_item` endpoints instead.
 
@@ -1070,11 +1073,12 @@ rotate_landscape: off       # off | cw | ccw — rescue landscape scans by rotat
 - Dedup is keyed on Dropbox's own `content_hash`, so a re-uploaded or moved copy of the same bytes is
   recognised without downloading it. Two copies of the same bytes in one folder (a Dropbox
   "conflicted copy") upload once.
-- A `files` entry with a `metadata_error` means the item was created but its `author_id` could not be
-  attached. It is deliberately not retried — retrying would create a second item — so fix it by
-  PUTting the metadata onto the recorded `item_id`.
 - `failed` entries are retried on later runs and quarantined after 3 attempts; a quarantined file is
   reported (`action: quarantined`) on every subsequent run. Delete the entry to force a retry.
+- Before a retry re-posts a file, the workspace is searched for an item whose `source_ref` is that
+  file's content hash: a handler that was killed after creating the item answers with a 503, and
+  without the lookup the retry would create a second item. A `files` entry with `recovered: true`
+  was adopted this way. If the lookup itself fails the file is uploaded anyway.
 - Deleting the whole file causes the folder to be ingested again from scratch.
 
 ### Batching and `author_id`
@@ -1102,15 +1106,13 @@ Per image, identical to the app's automatic mode:
 POST {SCREENSHOT_HANDLER_URL}?workspace=<id>&api_key=<key>&automatic=true
 Content-Type: multipart/form-data     (field: image)
 
-PUT {CHRONOMAPS_API_URL}/<workspace>/<item_id>?item-key=<item_key>
-Authorization: <api_key>
-
-{"author_id": "<batch uuid4>", "source": "dropbox", "dropbox_path": "...",
- "dropbox_content_hash": "...", "scanned_at": "..."}
+bookkeeping={"author_id": "<batch uuid4>", "source": "dropbox", "source_ref": "<content hash>",
+             "dropbox_path": "...", "dropbox_content_hash": "...", "scanned_at": "..."}
 ```
 
-Bookkeeping metadata goes in the `PUT`, never in the handler's `metadata` form field — that field is
-fed to the vision model as user-provided truth.
+Bookkeeping metadata goes in the handler's `bookkeeping` form field, which is written onto the item
+as it is created — never in the `metadata` form field, which is fed to the vision model as
+user-provided truth. Creating and labelling in one request is what makes a retry safe (see above).
 
 ### Triggers
 

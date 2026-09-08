@@ -152,7 +152,7 @@ Once the function is deployed, `dropbox_ingest_scheduled` does this every minute
 | Every image errors with 403 | Collaboration disabled on the workspace, or a stale key in `chronomaps.config` |
 | Folder is listed as "before the cutoff" | It already contained scans older than `DROPBOX_FOLDER_CUTOFF`; add `ignore_cutoff: true` |
 | `action: quarantined` in the output | A file failed 3 times and is no longer retried; fix the cause, then delete its entry from `chronomaps.state.json` |
-| An image was uploaded twice | Should not happen — check whether `chronomaps.state.json` was deleted or the folder was copied |
+| An image was uploaded twice | Check whether `chronomaps.state.json` was deleted or the folder was copied. If the first copy has no `source`/`dropbox_path` metadata, the handler was killed mid-request (look for `screenshot_handler returned 503` in the ingest log and memory errors in the handler's); the retry should have adopted that item — see `recovered` in the state file |
 | Nothing at all is ingested | No credentials file in any folder; `scripts/dropbox_check.py` says which folders are skipped and why |
 
 ## Rotating or revoking access
