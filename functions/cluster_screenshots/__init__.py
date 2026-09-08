@@ -254,7 +254,8 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
                 info = msg['info']
                 records = msg['records']
                 grid = msg['grid']
-                if len(records) > 0:
+                # A too-small workspace arrives with its single cluster already set.
+                if len(records) > 0 and 'clusters' not in info:
                     yield from find_clusters(records, grid, info)
 
                 convert_all_coords(info)

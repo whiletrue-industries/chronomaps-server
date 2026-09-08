@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 from pathlib import Path
 import datetime
 
@@ -25,6 +26,15 @@ from shared import (use_item, EMBEDDING_DIMENSION,
                     resolve_favorable_future, resolve_plausibility)
 
 FONT = Path(__file__).with_name('SourceSans.ttf')
+
+# Title of the single cluster a too-small workspace is drawn as, in the same
+# shape extract_cluster_title returns.
+FALLBACK_CLUSTER_TITLE = dict(
+    english='future screenshots',
+    dutch='toekomstige screenshots',
+    hebrew='צילומי מסך מהעתיד',
+    arabic='لقطات شاشة من المستقبل',
+)
 
 def load_records(config, records, params: TSNEParams):
     if len(config) > 1:
@@ -168,6 +178,40 @@ def calc_tsne_grid(X_2d, out_dim):
     _, col_asses, _ = lapjv(cost_matrix)
     grid_jv = grid[col_asses]
     return grid_jv
+
+def fallback_grid(count, out_dim):
+    """Pack `count` cells into one compact block at the centre of the grid.
+
+    Stands in for generate_tsne + calc_tsne_grid when there are too few records
+    for t-SNE, and returns the same shape they do: (count, 2) fractions of
+    (y, x) in [0, 1], one row per record.
+    """
+    cols = max(1, min(out_dim[0], math.ceil(math.sqrt(count))))
+    rows = math.ceil(count / cols)
+    x0 = (out_dim[0] - cols) // 2
+    y0 = (out_dim[1] - rows) // 2
+    span_x = max(out_dim[0] - 1, 1)
+    span_y = max(out_dim[1] - 1, 1)
+    cells = [
+        ((y0 + i // cols) / span_y, (x0 + i % cols) / span_x)
+        for i in range(count)
+    ]
+    return np.array(cells, dtype=np.float64).reshape(-1, 2)
+
+def single_cluster(info, title):
+    """One cluster spanning every image on the grid, shaped like find_clusters' output."""
+    positions = [g['pos'] for g in info['grid']]
+    if not positions:
+        return []
+    rotations = [g['metadata'].get('rotate', 0) for g in info['grid']]
+    return [dict(
+        title=title,
+        bounds=[
+            [min(p[0] for p in positions), min(p[1] for p in positions)],
+            [max(p[0] for p in positions) + 1, max(p[1] for p in positions) + 1],
+        ],
+        average_rotation=sum(rotations) / len(rotations),
+    )]
 
 def gray_world(im: Image.Image) -> Image.Image:
     """
@@ -375,26 +419,33 @@ def convert_all_coords(info):
 
 def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
     records = []
+    # load_records also backfills every fetched item's embedding and AI
+    # favorability/plausibility, so by here that is done regardless of how
+    # many records there are; the count only decides the layout below.
     yield from load_records(config, records, params)
     records = records[:params.TO_PLOT]
-    if len(records) < 10:
-        yield dict(msg='Not enough records found.')
+    if len(records) == 0:
+        yield dict(msg='No records found.')
         return
-    yield dict(msg=f'GOT {len(records)} - top record {records[0]["_id"]} created at {records[0]["created_at"] if records else "N/A"}')
+    yield dict(msg=f'GOT {len(records)} - top record {records[0]["_id"]} created at {records[0]["created_at"]}')
     new_state_hash = '|'.join([rec['_id'] for rec in records])
     new_state_hash = hashlib.md5(new_state_hash.encode('utf-8')).hexdigest()
     if last_state_hash and last_state_hash == new_state_hash:
         yield dict(msg=f'No new records - same hash ({last_state_hash} == {new_state_hash})')
         return
 
-    records, activations = records, [rec['embedding'] for rec in records]
-
-    yield dict(msg=f'Generating 2D representation from {len(records)} records.')
-    X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
-    yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
-    grid = calc_tsne_grid(X_2d, params.OUT_DIM)
-    grid = grid[:len(records)]
-    yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
+    too_few_for_tsne = len(records) < params.MIN_TSNE_RECORDS
+    if too_few_for_tsne:
+        yield dict(msg=f'Only {len(records)} records - too few for t-SNE, packing them into one cluster in the middle.')
+        grid = fallback_grid(len(records), params.OUT_DIM)
+    else:
+        activations = [rec['embedding'] for rec in records]
+        yield dict(msg=f'Generating 2D representation from {len(records)} records.')
+        X_2d = generate_tsne(activations, perplexity=min(params.PERPLEXITY, len(records)-1), tsne_iter=params.TSNE_ITER)
+        yield dict(msg="Generating image grid (%dx%d, %d images" % (params.OUT_DIM[0], params.OUT_DIM[1], len(records)))
+        grid = calc_tsne_grid(X_2d, params.OUT_DIM)
+        grid = grid[:len(records)]
+        yield dict(msg=f"Got grid, X_2d.shape: {X_2d.shape}, grid shape: {grid.shape}")
 
     try:
         # w, h = 530, 1000
@@ -419,6 +470,10 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
         yield from create_tsne_image(grid, records, params.OUT_DIM, res, offset, padding, pos_offset, tsne, params)
         image, info = tsne['image'], tsne['info']
         yield dict(msg=f'Got TSNE Image: {image.shape} {image.dtype}')
+        if too_few_for_tsne:
+            # Pre-empts find_clusters downstream, which would try to split
+            # this handful into several clusters and title each with the LLM.
+            info['clusters'] = single_cluster(info, FALLBACK_CLUSTER_TITLE)
         image = Image.fromarray(image)
         if not params.LOCAL:
             yield dict(msg="Creating tiles.")
