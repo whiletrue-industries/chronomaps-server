@@ -22,6 +22,9 @@ class TSNEParams():
     # Max favorability backfills per workspace per run; the rest wait for the
     # next run rather than pushing the job past its request timeout.
     ANALYSIS_BACKFILL_LIMIT: int = 50
+    # Below this many records t-SNE is meaningless (and perplexity collapses),
+    # so the map is drawn as one block in the middle instead of skipped.
+    MIN_TSNE_RECORDS: int = 10
 
     OPENAI_KEY: str = None
     CHRONOMAPS_API_URL: str = None

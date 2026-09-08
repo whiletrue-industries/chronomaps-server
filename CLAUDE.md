@@ -32,7 +32,7 @@ progress.
 ## Tests
 
 ```bash
-cd functions && pytest tests/          # 298 tests, ~20s, no cloud access needed
+cd functions && pytest tests/          # 313 tests, ~20s, no cloud access needed
 ```
 
 Config in `functions/pytest.ini`; CI installs `functions/requirements-test.txt`. Coverage is
@@ -62,11 +62,15 @@ JSONs are uploaded then `make_public()`d — objects are individually public, th
 not, so a **missing** object returns 404 and a **non-public** one returns 403. That
 distinction is the fastest way to tell "never generated" from "ACL problem".
 
-An item only reaches a map if `shared.use_item` accepts it, and a workspace with fewer than
-10 accepted records writes nothing at all — its map 404s forever. `use_item` needs a
-description, a `created_at`, and a favorability; `shared.resolve_favorable_future` takes the
-human answer (`favorable_future`) first and falls back to the model's
-(`ai_favorable_future`), so check both before concluding an item is unusable.
+An item only reaches a map if `shared.use_item` accepts it. A workspace with **no** accepted
+records writes nothing at all — its map 404s forever. One with fewer than
+`TSNEParams.MIN_TSNE_RECORDS` (10) skips t-SNE and is drawn as one block in the middle of the
+grid under a single "future screenshots" cluster (`calc_tsne.fallback_grid`), so a small map
+still renders. `use_item` needs a description, a `created_at`, and a favorability;
+`shared.resolve_favorable_future` takes the human answer (`favorable_future`) first and falls
+back to the model's (`ai_favorable_future`), so check both before concluding an item is
+unusable. Either way `ensure_analysis` backfills embeddings and `ai_favorable_future` /
+`ai_plausibility` for every fetched item *before* the count is checked.
 
 `if_changed=True` skips a workspace whose record set is unchanged, but the hash is over
 record **ids** only — editing an existing item does not trigger a rebuild.
