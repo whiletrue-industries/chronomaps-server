@@ -61,7 +61,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: null
   cluster_its_time:
-    availableMemoryMb: 8192
+    availableMemoryMb: 16384
     concurrency: null
     entryPoint: cluster_its_time
     ingressSettings: null
@@ -81,7 +81,7 @@ endpoints:
     serviceAccountEmail: null
     timeoutSeconds: 1800
   cluster_screenshots:
-    availableMemoryMb: 8192
+    availableMemoryMb: 16384
     concurrency: null
     entryPoint: cluster_screenshots
     httpsTrigger: {}

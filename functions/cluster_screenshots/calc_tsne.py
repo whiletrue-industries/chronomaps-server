@@ -36,6 +36,35 @@ FALLBACK_CLUSTER_TITLE = dict(
     arabic='لقطات شاشة من المستقبل',
 )
 
+def fetch_items(workspace, api_key, req_params, wanted, params: TSNEParams):
+    """The workspace's first `wanted` items, fetched a page at a time.
+
+    One request for all of them exceeds Cloud Run's response size limit on a
+    large workspace (see TSNEParams.FETCH_PAGE_SIZE). Stops at a short page.
+    Returns the API's payload untouched when it is not a list (an error body),
+    so the caller can skip the workspace the way it always has.
+    """
+    items = []
+    seen = set()
+    page = 0
+    while len(items) < wanted:
+        page_params = dict(req_params, page=page, page_size=params.FETCH_PAGE_SIZE)
+        resp = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}/items', page_params, headers={'Authorization': api_key})
+        resp.raise_for_status()
+        batch = resp.json()
+        if not isinstance(batch, list):
+            return batch if page == 0 else items
+        for item in batch:
+            item_id = item.get('_id')
+            if item_id is None or item_id not in seen:
+                seen.add(item_id)
+                items.append(item)
+        if len(batch) < params.FETCH_PAGE_SIZE:
+            break
+        page += 1
+    return items[:wanted]
+
+
 def load_records(config, records, params: TSNEParams):
     if len(config) > 1:
         max_per_workspace = int(params.TO_PLOT / 2)
@@ -45,14 +74,14 @@ def load_records(config, records, params: TSNEParams):
         if extra:
             min_range = int(extra[0])
             moderation_range = ','.join(str(i) for i in range(min_range, 6))
-            req_params = dict(page_size=params.TO_PLOT*2, order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
+            req_params = dict(order_by='-created_at', filters=f'metadata._private_moderation in [{moderation_range}]')
             yield dict(msg=f'Fetching from {workspace}... ({moderation_range})')
         else:
-            req_params = dict(page_size=params.TO_PLOT*2, order_by='-created_at')
+            req_params = dict(order_by='-created_at')
             yield dict(msg=f'Fetching from {workspace}...')
-        workspace_metadata = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}', req_params, headers={'Authorization': api_key}).json()
+        workspace_metadata = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}', headers={'Authorization': api_key}).json()
         req_params['include_embedding'] = 'true'
-        items = requests.get(f'{params.CHRONOMAPS_API_URL}/{workspace}/items', req_params, headers={'Authorization': api_key}).json()
+        items = fetch_items(workspace, api_key, req_params, wanted=params.TO_PLOT * 2, params=params)
         if isinstance(items, list):
             yield dict(msg=f'Got {len(items)} items.')
             yield from ensure_analysis(items, workspace, api_key, params)

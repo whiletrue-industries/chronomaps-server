@@ -88,6 +88,11 @@ Worth knowing before diagnosing a stalled map:
   order every run and always restarts from the beginning, so when runs die early the
   workspaces late in the alphabet are never reached. There is no cursor.
 - **No lock**, unlike the Dropbox ingest — overlapping runs both walk the same workspaces.
+- **Response size.** The items API answers in one Cloud Run response, capped at 32 MB. With
+  its embedding an item is ~63 KB, so `load_records` pages the fetch
+  (`TSNEParams.FETCH_PAGE_SIZE`). Before it did, any workspace past ~500 records came back
+  truncated and failed with `JSONDecodeError` on every run. The API still loads the whole
+  collection to serve each page, so a page costs ~20 s on a large workspace.
 
 To re-cluster one workspace without waiting for the batch, call the `cluster_screenshots`
 endpoint directly (see `run-jma25-tsne.sh`); it gets a whole invocation to itself.

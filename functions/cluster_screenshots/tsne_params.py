@@ -32,6 +32,11 @@ class TSNEParams():
     # Below this many records t-SNE is meaningless (and perplexity collapses),
     # so the map is drawn as one block in the middle instead of skipped.
     MIN_TSNE_RECORDS: int = 10
+    # Items are fetched from the API this many at a time. With its embedding an
+    # item is ~63 KB of JSON and Cloud Run drops responses over 32 MB, so asking
+    # for all TO_PLOT*2 (~690) items at once fails for any workspace past ~500
+    # records: the body comes back truncated and the JSON parse raises.
+    FETCH_PAGE_SIZE: int = 200
 
     OPENAI_KEY: str = None
     CHRONOMAPS_API_URL: str = None
