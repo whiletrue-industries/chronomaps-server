@@ -185,15 +185,103 @@ class TestPerplexity:
         assert TSNEParams(PERPLEXITY=20).perplexity_for(500) == 20
 
 
+def _response(payload, status=200):
+    resp = type('Resp', (), {})()
+    resp.status_code = status
+    resp.json = lambda: payload
+    def raise_for_status():
+        if status >= 400:
+            raise calc_tsne.requests.HTTPError(f'{status} error')
+    resp.raise_for_status = raise_for_status
+    return resp
+
+
+class TestItemsAreFetchedInPages:
+    """A large workspace's items are fetched page by page: one request for all
+    of them exceeds Cloud Run's 32 MB response limit, the body comes back
+    truncated, and the workspace fails to cluster on every run."""
+
+    def _serve(self, total, params, status=200):
+        # The API pages an ordered list by offset; the ids let us see what was kept.
+        all_items = [dict(_id=f'r{i}') for i in range(total)]
+        calls = []
+
+        def fake_get(url, req_params=None, headers=None):
+            if not url.endswith('/items'):
+                return _response(dict(title='WS'))
+            calls.append(dict(req_params))
+            start = req_params['page'] * req_params['page_size']
+            return _response(all_items[start:start + req_params['page_size']], status)
+
+        records = []
+        with patch.object(calc_tsne.requests, 'get', fake_get), \
+             patch.object(calc_tsne, 'ensure_analysis') as ensure:
+            ensure.return_value = iter(())
+            list(calc_tsne.load_records([('ws', 'key')], records, params))
+        fetched = ensure.call_args.args[0] if ensure.called else None
+        return calls, fetched
+
+    def test_pages_until_a_short_page(self):
+        params = TSNEParams(FETCH_PAGE_SIZE=200)   # TO_PLOT*2 = 690 wanted
+        calls, fetched = self._serve(450, params)
+        assert [c['page'] for c in calls] == [0, 1, 2]
+        assert all(c['page_size'] == 200 for c in calls)
+        assert [c['include_embedding'] for c in calls] == ['true'] * 3
+        assert [i['_id'] for i in fetched] == [f'r{i}' for i in range(450)]
+
+    def test_stops_once_enough_are_in_hand(self):
+        params = TSNEParams(FETCH_PAGE_SIZE=200)
+        calls, fetched = self._serve(5000, params)
+        assert [c['page'] for c in calls] == [0, 1, 2, 3]
+        assert len(fetched) == params.TO_PLOT * 2
+
+    def test_a_page_of_exactly_the_page_size_is_followed_by_an_empty_one(self):
+        params = TSNEParams(FETCH_PAGE_SIZE=200)
+        calls, fetched = self._serve(200, params)
+        assert [c['page'] for c in calls] == [0, 1]
+        assert len(fetched) == 200
+
+    def test_an_item_repeated_across_pages_is_kept_once(self):
+        params = TSNEParams(FETCH_PAGE_SIZE=2)
+        pages = [[dict(_id='a'), dict(_id='b')], [dict(_id='b'), dict(_id='c')], [dict(_id='d')]]
+
+        def fake_get(url, req_params=None, headers=None):
+            if not url.endswith('/items'):
+                return _response(dict(title='WS'))
+            return _response(pages[req_params['page']])
+
+        records = []
+        with patch.object(calc_tsne.requests, 'get', fake_get), \
+             patch.object(calc_tsne, 'ensure_analysis') as ensure:
+            ensure.return_value = iter(())
+            list(calc_tsne.load_records([('ws', 'key')], records, params))
+        assert [i['_id'] for i in ensure.call_args.args[0]] == ['a', 'b', 'c', 'd']
+
+    def test_an_http_error_is_raised_not_parsed(self):
+        # The batch loop catches it per workspace and reports the status,
+        # instead of a JSONDecodeError on a truncated body.
+        with pytest.raises(calc_tsne.requests.HTTPError):
+            self._serve(10, TSNEParams(FETCH_PAGE_SIZE=200), status=503)
+
+    def test_an_error_body_skips_the_workspace(self):
+        def fake_get(url, req_params=None, headers=None):
+            return _response(dict(error='nope') if url.endswith('/items') else dict(title='WS'))
+
+        records = []
+        with patch.object(calc_tsne.requests, 'get', fake_get), \
+             patch.object(calc_tsne, 'ensure_analysis') as ensure:
+            list(calc_tsne.load_records([('ws', 'key')], records, TSNEParams()))
+        ensure.assert_not_called()
+        assert records == []
+
+
 class TestAnalysisRunsRegardlessOfCount:
     """Embeddings and AI favorability/plausibility are backfilled for every
     fetched item, before the count decides whether t-SNE or the fallback runs."""
 
     def _load(self, items, params):
         def fake_get(url, req_params=None, headers=None):
-            resp = type('Resp', (), {})()
-            resp.json = (lambda: items) if url.endswith('/items') else (lambda: dict(title='WS'))
-            return resp
+            return _response(items if url.endswith('/items') else dict(title='WS'))
 
         records = []
         with patch.object(calc_tsne.requests, 'get', fake_get), \
@@ -207,7 +295,7 @@ class TestAnalysisRunsRegardlessOfCount:
                       future_scenario_description=f'd{i}') for i in range(3)]
         ensure, _ = self._load(items, _small_params())
         ensure.assert_called_once()
-        assert ensure.call_args.args[0] is items
+        assert ensure.call_args.args[0] == items
         assert len(ensure.call_args.args[0]) == 3
 
     def test_items_the_map_rejects_are_still_analysed(self):
@@ -216,5 +304,5 @@ class TestAnalysisRunsRegardlessOfCount:
         items = [dict(_id='r0', future_scenario_description='d0')]
         ensure, records = self._load(items, _small_params())
         ensure.assert_called_once()
-        assert ensure.call_args.args[0] is items
+        assert ensure.call_args.args[0] == items
         assert records == []
