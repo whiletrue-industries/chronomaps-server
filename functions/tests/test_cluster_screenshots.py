@@ -6,10 +6,13 @@ middle of the map, under a single 'future screenshots' cluster, instead of
 being skipped.
 """
 
+from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from cluster_screenshots import calc_tsne
 from cluster_screenshots.calc_tsne import (
@@ -306,3 +309,50 @@ class TestAnalysisRunsRegardlessOfCount:
         ensure.assert_called_once()
         assert ensure.call_args.args[0] == items
         assert records == []
+
+
+def _png(image):
+    buff = BytesIO()
+    image.save(buff, format='png')
+    buff.seek(0)
+    return buff
+
+
+def _render(source, target_size=(217, 250)):
+    """Run a source image through get_image's deployed (enhanced-copy) path."""
+    record = dict(_id='rec', screenshot_url='https://storage.googleapis.com/chronomaps3-eu/ws/item/screenshot.jpeg',
+                  created_at='2025-01-01', favorable_future='yes', plausibility=100)   # upright
+    params = TSNEParams(ADD_TITLE=False)
+    with patch.object(calc_tsne, 'enhance_image_fn', return_value=dict(enhanced_url='https://example.com/enhanced.jpeg')), \
+         patch.object(calc_tsne.requests, 'get', return_value=SimpleNamespace(raw=_png(source))):
+        img, _, _ = calc_tsne.get_image(record, target_size, 0, 0, params)
+    assert img.size == target_size
+    return np.asarray(img).astype(int), params
+
+
+def _drawn_box(pixels, params):
+    """Bounding box (x0, y0, x1, y1) of everything that isn't background."""
+    ys, xs = np.nonzero(np.abs(pixels - np.array(params.BG_COLOR)).max(axis=2) > 40)
+    return xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+
+
+class TestGetImageFitsTheCell:
+    # Enhanced copies made since enhancement moved out of the clusterer keep
+    # the scan's full resolution; they used to be pasted as-is and cropped.
+
+    def test_an_oversized_scan_is_shown_whole(self):
+        source = Image.new('RGB', (1092, 2060), 'black')
+        source.paste((255, 0, 0), (0, 0, 1092, 200))       # top band
+        source.paste((0, 0, 255), (0, 1860, 1092, 2060))   # bottom band
+        pixels, params = _render(source)
+
+        red = (pixels[..., 0] > 200) & (pixels[..., 1] < 60) & (pixels[..., 2] < 60)
+        blue = (pixels[..., 2] > 200) & (pixels[..., 0] < 60) & (pixels[..., 1] < 60)
+        assert red.any() and blue.any()
+        x0, y0, x1, y1 = _drawn_box(pixels, params)
+        assert (x1 - x0, y1 - y0) == pytest.approx((116, 220), abs=2)   # inner_target_size
+
+    def test_an_off_ratio_scan_keeps_its_proportions(self):
+        pixels, params = _render(Image.new('RGB', (1000, 1000), 'black'))
+        x0, y0, x1, y1 = _drawn_box(pixels, params)
+        assert x1 - x0 == pytest.approx(y1 - y0, abs=2)
