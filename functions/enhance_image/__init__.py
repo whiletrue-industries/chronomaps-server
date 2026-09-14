@@ -113,6 +113,10 @@ def enhance_image(screenshot_path: str = None, screenshot_url: str = None, side:
     and uploads the enhanced version. Also creates a thumbnail from the
     enhanced image if one doesn't exist yet.
 
+    The enhanced copy keeps the original's resolution: `side` only picks the
+    file name, it does not scale. Callers that draw it at a fixed size (the
+    t-SNE map) must resize it themselves.
+
     Returns dict with enhanced_url, enhanced_path, thumbnail_url,
     thumbnail_path, and already_existed flag.
     """

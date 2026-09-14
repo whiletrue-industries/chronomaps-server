@@ -322,7 +322,13 @@ def get_image(record, target_size, pos_x, pos_y, params: TSNEParams, save=None):
                 print('Error opening image:', filename)
                 raise
             img = enhance(img)
-            img = img.resize(inner_target_size, Image.Resampling.LANCZOS)
+
+        # Enhanced copies are kept at the scan's own resolution, so fit the
+        # image to the cell here whatever its source. Pasted any larger, it is
+        # cropped to its middle. Padding rather than stretching keeps an
+        # off-ratio scan's proportions.
+        img = ImageOps.pad(img.convert('RGB'), inner_target_size,
+                           method=Image.Resampling.LANCZOS, color=params.BG_COLOR)
 
         if record.get('workspace_title') and params.ADD_TITLE:
             img = ImageOps.expand(img, border=(0, 0, 0, 48), fill=params.BG_COLOR)  # Add a border around the image

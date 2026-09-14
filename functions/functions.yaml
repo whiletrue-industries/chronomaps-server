@@ -62,6 +62,7 @@ endpoints:
     timeoutSeconds: null
   cluster_its_time:
     availableMemoryMb: 16384
+    cpu: 4
     concurrency: null
     entryPoint: cluster_its_time
     ingressSettings: null
@@ -82,6 +83,7 @@ endpoints:
     timeoutSeconds: 1800
   cluster_screenshots:
     availableMemoryMb: 16384
+    cpu: 4
     concurrency: null
     entryPoint: cluster_screenshots
     httpsTrigger: {}
