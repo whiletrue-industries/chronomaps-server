@@ -95,7 +95,10 @@ Worth knowing before diagnosing a stalled map:
   collection to serve each page, so a page costs ~20 s on a large workspace.
 
 To re-cluster one workspace without waiting for the batch, call the `cluster_screenshots`
-endpoint directly (see `run-jma25-tsne.sh`); it gets a whole invocation to itself.
+endpoint directly; it gets a whole invocation to itself. `?workspace=<id>` is what the admin
+app's and the showcase's "Rebuild map" buttons send; `run-jma25-tsne.sh` uses the older
+`config=`/`tag=` form. Both are authenticated (`cluster_screenshots/auth.py`): a Firebase
+admin login, or the admin key of every workspace involved.
 
 ## Dropbox ingest (`functions/dropbox_ingest/`)
 
