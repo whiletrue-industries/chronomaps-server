@@ -856,18 +856,26 @@ POST /complete_flow?workspace=<id>&api_key=<key>&item_id=<id>&item_key=<key>&loc
 ### Cluster Screenshots
 
 ```http
+POST /cluster_screenshots?workspace=<workspace-id>&no_title=<bool>
 POST /cluster_screenshots?config=<config>&tag=<tag>&no_title=<bool>
 ```
 
-**Authentication**: OPENAI_API_KEY and CHRONOMAPS_API_URL secrets required
+**Authentication** (`Authorization` header; anything else is `403`):
+- `Bearer <firebase-id-token>` of a user on the admins list - may cluster anything; or
+- the **admin key** of the workspace named by `workspace`; or, in the `config` form, no
+  header at all provided every `workspace:key` entry carries that workspace's admin key.
+  Without a Firebase login, `tag` may not name a workspace that is not in the `config`.
 
-**Memory**: 8GB Cloud Function
+**Memory**: 16GB Cloud Function
 
 **Response Type**: Server-Sent Events (stream)
 
 **Query Parameters**:
-- `config`: Configuration string (format: `"workspace:admin_key:moderation_level;workspace2:key:level"`)
-- `tag`: Tag for the cluster set
+- `workspace`: Rebuild this one workspace's map, exactly as the scheduled run would
+  (tag = workspace id, moderation level 3). This is what the admin app's "Rebuild map"
+  button calls.
+- `config`: Hand-driven alternative, for maps that combine workspaces (format: `"workspace:admin_key:moderation_level;workspace2:key:level"`)
+- `tag`: Tag for the cluster set (`config` form only)
 - `no_title` (optional): Skip title generation
 
 **Description**: ML-powered screenshot clustering and visualization using t-SNE dimensionality reduction and agglomerative clustering. Generates map tiles (256x256px) for zoom levels and extracts cluster themes using GPT-5.4.

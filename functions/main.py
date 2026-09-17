@@ -24,6 +24,7 @@ from screenshot_handler import reanalyze_item as reanalyze_item_fn
 from item_ingress_agent import item_ingress_agent as item_ingress_agent_fn
 from cluster_screenshots import cluster_screenshots as cluster_screenshots_one
 from cluster_screenshots import cluster_screenshots_all as cluster_screenshots_fn
+from cluster_screenshots.auth import ClusterRequestDenied, resolve_cluster_request
 from enhance_image import enhance_image as enhance_image_fn
 from enhance_image import enhance_all_images as enhance_all_images_fn
 from complete_flow import complete_flow as complete_flow_fn
@@ -165,10 +166,12 @@ def enhance_image(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(region='europe-west4', cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]), secrets=['CHRONOMAPS_API_URL', 'OPENAI_API_KEY'], memory=options.MemoryOption.GB_16, cpu=4)
 def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
-    # Get the request data
-    # Workspace and api_key from query parameters:
-    config = req.args.get('config')
-    tag = req.args.get('tag')
+    # Either ?workspace=<id>, or the hand-driven ?config=<ws:key:moderation;...>&tag=<tag>.
+    # Both are authenticated - see cluster_screenshots/auth.py.
+    try:
+        config, tag = resolve_cluster_request(req, firestore.client())
+    except ClusterRequestDenied as e:
+        return https_fn.Response(e.message, status=e.status)
     no_title = req.args.get('no_title', 'false').lower() == 'true'
     add_title = not no_title
     start = time.time()
