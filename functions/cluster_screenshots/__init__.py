@@ -212,14 +212,36 @@ def convert_all_coords(info):
         grid['geo_pos'] = convert_coords(pos, conversion_ratio)
         grid['geo_bounds'] = convert_bounds([[grid['pos'][0], grid['pos'][1]], [grid['pos'][0] + 1, grid['pos'][1] + 1]], conversion_ratio)
 
-def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
-    yield dict(msg=f'Config: {config}, tag: {tag}, add_title: {add_title}, if_changed: {if_changed}')
+NUM_SETS = 16
+
+
+def next_set_id(tag_info):
+    """
+    Where the next run writes, and which set holds the tiles being served.
+
+    Sets cycle so the one in use stays servable while the next is written. A run with
+    skip_tiles publishes a set that has a layout but no tiles; the tile map keeps reading
+    `tiles_set_id`, the last set that has them, so the cycle steps over it rather than
+    write a layout on top of tiles it does not match.
+    """
+    set_id = tag_info['set_id']
+    # Before skip_tiles existed every published set had tiles.
+    tiles_set_id = tag_info.get('tiles_set_id', set_id)
+    set_id = (set_id + 1) % NUM_SETS
+    if set_id == tiles_set_id:
+        set_id = (set_id + 1) % NUM_SETS
+    return set_id, tiles_set_id
+
+
+def cluster_screenshots(config, tag=None, add_title=True, if_changed=False, skip_tiles=False):
+    yield dict(msg=f'Config: {config}, tag: {tag}, add_title: {add_title}, if_changed: {if_changed}, skip_tiles: {skip_tiles}')
     config = config.split(';') if config else []
     config = [c.strip().split(':') for c in config if c.strip()]
     params = TSNEParams(
         OPENAI_KEY=OPENAI_KEY,
         CHRONOMAPS_API_URL=CHRONOMAPS_API_URL,
         ADD_TITLE=add_title,
+        SKIP_TILES=skip_tiles,
     )
 
     if tag is None:
@@ -230,16 +252,18 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
 
     global_config_blob = bucket.blob(f'tiles/{tag}/config.json')
     set_id = 0
+    tiles_set_id = None
+    tiles_state_hash = None
     state_hash = None
     if global_config_blob.exists():
         content = global_config_blob.download_as_text()
         try:
             tag_info = json.loads(content)
-            set_id = tag_info['set_id']
-            state_hash = tag_info.get('state_hash') if if_changed else None
-            set_id += 1
-            if set_id == 16:
-                set_id = 0
+            set_id, tiles_set_id = next_set_id(tag_info)
+            # "Unchanged" means unchanged since the tiles were last cut: a skip_tiles run
+            # must not talk the next scheduled run out of cutting them.
+            tiles_state_hash = tag_info.get('tiles_state_hash', tag_info.get('state_hash'))
+            state_hash = tiles_state_hash if if_changed else None
         except Exception as e:
             print('Error loading config:', e)
             pass
@@ -266,7 +290,12 @@ def cluster_screenshots(config, tag=None, add_title=True, if_changed=False):
                 blob.make_public()
 
                 global_config_blob.cache_control = 'no-cache'
-                global_config_blob.upload_from_string(json.dumps(dict(set_id=set_id, state_hash=info['state_hash'], update_time=info['update_time'])), content_type='application/json')
+                if not skip_tiles:
+                    tiles_set_id, tiles_state_hash = set_id, info['state_hash']
+                global_config_blob.upload_from_string(json.dumps(dict(
+                    set_id=set_id, state_hash=info['state_hash'], update_time=info['update_time'],
+                    tiles_set_id=tiles_set_id, tiles_state_hash=tiles_state_hash,
+                )), content_type='application/json')
                 global_config_blob.make_public()
 
                 yield dict(msg=f'Config uploaded: {blob.public_url}')

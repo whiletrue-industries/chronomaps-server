@@ -6,9 +6,10 @@ middle of the map, under a single 'future screenshots' cluster, instead of
 being skipped.
 """
 
+import json
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -356,3 +357,77 @@ class TestGetImageFitsTheCell:
         pixels, params = _render(Image.new('RGB', (1000, 1000), 'black'))
         x0, y0, x1, y1 = _drawn_box(pixels, params)
         assert x1 - x0 == pytest.approx(y1 - y0, abs=2)
+
+
+class TestSkipTiles:
+    """A skip_tiles run publishes a layout but no tiles, and must not strand the tile map."""
+
+    def test_inner_publishes_the_layout_without_tiles(self):
+        params = _small_params()
+        params.SKIP_TILES = True
+        actions = _run(_fake_records(5), params)
+        assert 'tiles' not in actions
+        assert len(actions['clusters']['info']['grid']) == 5
+
+    def test_tiles_are_cut_by_default(self):
+        assert 'tiles' in _run(_fake_records(5), _small_params())
+
+    def _publish(self, previous, skip_tiles, if_changed=False, state_hash='new-hash'):
+        """Run cluster_screenshots over a faked pipeline; returns (global config written, hash the inner run was given)."""
+        import cluster_screenshots as cs
+
+        blobs = {}
+
+        def blob(path):
+            if path not in blobs:
+                blobs[path] = MagicMock()
+            return blobs[path]
+
+        global_blob = blob('tiles/ws/config.json')
+        global_blob.exists.return_value = previous is not None
+        global_blob.download_as_text.return_value = json.dumps(previous)
+        seen = {}
+
+        def inner(config, params, last_state_hash):
+            seen['last_state_hash'] = last_state_hash
+            seen['skip_tiles'] = params.SKIP_TILES
+            info = dict(grid=[], conversion_ratio=(1, 1), clusters=[], state_hash=state_hash, update_time='now')
+            yield dict(action='clusters', info=info, records=[], grid=[])
+
+        with patch.object(cs, 'bucket', SimpleNamespace(blob=blob)), \
+             patch.object(cs, 'cluster_screenshots_inner', inner):
+            list(cs.cluster_screenshots('ws:key:3', tag='ws', if_changed=if_changed, skip_tiles=skip_tiles))
+        written = json.loads(global_blob.upload_from_string.call_args[0][0])
+        return written, seen, blobs
+
+    def test_tiled_run_points_the_tile_map_at_itself(self):
+        written, seen, blobs = self._publish(dict(set_id=4, state_hash='old'), skip_tiles=False)
+        assert seen['skip_tiles'] is False
+        assert (written['set_id'], written['tiles_set_id'], written['tiles_state_hash']) == (5, 5, 'new-hash')
+        assert 'tiles/ws/5/config.json' in blobs
+
+    def test_tileless_run_leaves_the_tile_map_on_the_last_tiled_set(self):
+        written, seen, _ = self._publish(dict(set_id=4, state_hash='old'), skip_tiles=True)
+        assert seen['skip_tiles'] is True
+        assert (written['set_id'], written['tiles_set_id'], written['tiles_state_hash']) == (5, 4, 'old')
+        # The showcase tells sets apart by state_hash, so it still has to be the new one.
+        assert written['state_hash'] == 'new-hash'
+
+    def test_the_cycle_steps_over_the_set_whose_tiles_are_being_served(self):
+        previous = dict(set_id=3, state_hash='h', tiles_set_id=4, tiles_state_hash='old')
+        written, _, _ = self._publish(previous, skip_tiles=True)
+        assert (written['set_id'], written['tiles_set_id']) == (5, 4)
+
+    def test_the_cycle_wraps(self):
+        written, _, _ = self._publish(dict(set_id=15, state_hash='h', tiles_set_id=0, tiles_state_hash='old'), skip_tiles=True)
+        assert (written['set_id'], written['tiles_set_id']) == (1, 0)
+
+    def test_a_tileless_run_does_not_talk_the_scheduled_run_out_of_cutting_tiles(self):
+        # The layout is current ('new') but the tiles were cut for 'old'.
+        previous = dict(set_id=5, state_hash='new', tiles_set_id=4, tiles_state_hash='old')
+        _, seen, _ = self._publish(previous, skip_tiles=False, if_changed=True)
+        assert seen['last_state_hash'] == 'old'
+
+    def test_first_ever_run_without_tiles(self):
+        written, _, _ = self._publish(None, skip_tiles=True)
+        assert (written['set_id'], written['tiles_set_id'], written['tiles_state_hash']) == (0, None, None)

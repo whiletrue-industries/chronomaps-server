@@ -52,7 +52,7 @@ by mistake for months:
 Output lands in `gs://chronomaps3-eu/tiles/`:
 
 ```
-tiles/<tag>/config.json          {set_id, state_hash, update_time}   ← which set is current
+tiles/<tag>/config.json          {set_id, state_hash, update_time, tiles_set_id, tiles_state_hash}   ← which set is current
 tiles/<tag>/<set_id>/config.json {dim, grid[], clusters[], …}        ← the map itself
 tiles/<tag>/<set_id>/<z>/<x>/<y>.png
 ```
@@ -61,6 +61,13 @@ tiles/<tag>/<set_id>/<z>/<x>/<y>.png
 JSONs are uploaded then `make_public()`d — objects are individually public, the bucket is
 not, so a **missing** object returns 404 and a **non-public** one returns 403. That
 distinction is the fastest way to tell "never generated" from "ACL problem".
+
+A run with `skip_tiles` (the apps' "Rebuild map" buttons) publishes a set with a layout but
+**no tiles**. The top-level `config.json` therefore also carries `tiles_set_id` /
+`tiles_state_hash` — the last set that has tiles, which is the one the Leaflet tile map must
+read (layout *and* tiles, so they match). The set cycle steps over it, and `if_changed`
+compares against `tiles_state_hash`, so a tile-less run never stops the scheduled run from
+cutting tiles.
 
 An item only reaches a map if `shared.use_item` accepts it. A workspace with **no** accepted
 records writes nothing at all — its map 404s forever. One with fewer than
