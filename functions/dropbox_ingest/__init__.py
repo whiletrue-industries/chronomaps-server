@@ -43,7 +43,7 @@ STATE_FILENAME = 'chronomaps.state.json'
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png')
 
 DEFAULT_FOLDER_CUTOFF = '2026-08-20T00:00:00Z'
-DEFAULT_SETTLE_SECONDS = 30      # let a multi-page scan finish syncing before batching it
+DEFAULT_SETTLE_SECONDS = 60      # let a multi-page scan finish syncing before batching it
 DEFAULT_BATCH_GAP_SECONDS = 5   # a gap longer than this starts a new author batch
 DEFAULT_MAX_UPLOADS_PER_RUN = 50
 MAX_FILE_ATTEMPTS = 3             # failures are retried across runs, then quarantined

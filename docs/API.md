@@ -1088,7 +1088,7 @@ longer than `batch_gap_seconds` starts a new batch, and each batch gets one `uui
 is written to every item in it. The last 10 batches are kept in `recent_batches` with their scan
 windows, so a page that syncs an hour late rejoins *its own* batch rather than whichever one was
 processed most recently. Files that reached Dropbox less than `DROPBOX_SETTLE_SECONDS` ago (default
-180) are left for the next run so a batch mid-sync is not split.
+60) are left for the next run so a batch mid-sync is not split.
 
 ### Image preprocessing
 
@@ -1127,7 +1127,7 @@ Authorization: Bearer <firebase-token>
 uploading anything or writing state files; `folder` limits the run to one workspace folder. Returns
 the array of per-step status objects.
 
-`dropbox_ingest_scheduled` runs the same flow every 5 minutes. Both take a Firestore lock
+`dropbox_ingest_scheduled` runs the same flow every 15 minutes. Both take a Firestore lock
 (`chronomaps_global/dropbox_ingest_lock`) so two runs never ingest concurrently, and both stop
 starting new work after `DROPBOX_RUN_DEADLINE_SECONDS` (default 1500) so an interrupted chunk cannot
 be re-uploaded by the next run.
@@ -1433,7 +1433,7 @@ manual setup:
 - `DROPBOX_FOLDER_CUTOFF` - ISO timestamp; folders older than this are ignored
 - `DROPBOX_NAMESPACE_ID` - Only for a Dropbox Business team space (`scripts/dropbox_check.py`
   prints the value when it is needed)
-- `DROPBOX_SETTLE_SECONDS` - Optional; how long a file must be settled before ingest (default 180)
+- `DROPBOX_SETTLE_SECONDS` - Optional; how long a file must be settled before ingest (default 60)
 - `DROPBOX_RUN_DEADLINE_SECONDS` - Optional; stop starting work after this long (default 1500)
 - `DROPBOX_FULL_SWEEP_HOURS` - Optional; how often every folder is re-marked regardless of the
   cursor (default 6)

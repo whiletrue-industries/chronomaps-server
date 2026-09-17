@@ -3,7 +3,7 @@
 How to connect a Dropbox folder of scanned pages to Chronomaps, from nothing. Follow it once per
 Dropbox account; adding further workshop folders afterwards is only step 7.
 
-What the ingest does, in one line: every few minutes it looks at the subfolders of one Dropbox
+What the ingest does, in one line: every 15 minutes it looks at the subfolders of one Dropbox
 folder, and for each one that holds a credentials file, uploads new scans to that workspace — cropped
 to the page ratio, deduplicated, with one shared `author_id` per scan batch. The reference for its
 behaviour is [API.md](API.md#dropbox-auto-ingest); this document is only the setup.
@@ -137,7 +137,7 @@ python dropbox_ingest_cli.py --folder "<folder name>"             # for real
 The dry run lists candidates and their batch grouping. It does not download images, so it cannot
 show which will be rejected for their aspect ratio — that appears in the real run.
 
-Once the function is deployed, `dropbox_ingest_scheduled` does this every minute on its own.
+Once the function is deployed, `dropbox_ingest_scheduled` does this every 15 minutes on its own.
 `POST /dropbox_ingest?dry_run=true&folder=<name>` (with an admin Firebase token) runs it on demand.
 
 ---
