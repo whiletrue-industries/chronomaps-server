@@ -174,10 +174,12 @@ def cluster_screenshots(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(e.message, status=e.status)
     no_title = req.args.get('no_title', 'false').lower() == 'true'
     add_title = not no_title
+    # Layout only, no map tiles - what the apps' "Rebuild map" buttons ask for.
+    skip_tiles = req.args.get('skip_tiles', 'false').lower() == 'true'
     start = time.time()
     
     def generate():
-        for bit in cluster_screenshots_one(config, tag=tag, add_title=add_title):
+        for bit in cluster_screenshots_one(config, tag=tag, add_title=add_title, skip_tiles=skip_tiles):
             delta = int(time.time() - start)
             bit = [delta, bit]
             yield f"data: {json.dumps(bit, ensure_ascii=False)}\n\n"

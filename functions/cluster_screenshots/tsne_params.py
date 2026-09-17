@@ -26,6 +26,9 @@ class TSNEParams():
     LOCAL: bool = False
     V_OFFSET: bool = False
     ADD_TITLE: bool = True
+    # Publish the layout (grid + clusters) without cutting map tiles. For manual rebuilds:
+    # the showcase only reads the layout, and the tiles are most of a run's upload time.
+    SKIP_TILES: bool = False
     # Max favorability backfills per workspace per run; the rest wait for the
     # next run rather than pushing the job past its request timeout.
     ANALYSIS_BACKFILL_LIMIT: int = 50

@@ -877,6 +877,10 @@ POST /cluster_screenshots?config=<config>&tag=<tag>&no_title=<bool>
 - `config`: Hand-driven alternative, for maps that combine workspaces (format: `"workspace:admin_key:moderation_level;workspace2:key:level"`)
 - `tag`: Tag for the cluster set (`config` form only)
 - `no_title` (optional): Skip title generation
+- `skip_tiles` (optional, default `false`): Publish the layout (grid + clusters) without
+  cutting map tiles. The apps' "Rebuild map" buttons send `true`. The tile map keeps
+  reading the last set that has tiles (`tiles_set_id` in `tiles/<tag>/config.json`), and
+  the next scheduled run still cuts them.
 
 **Description**: ML-powered screenshot clustering and visualization using t-SNE dimensionality reduction and agglomerative clustering. Generates map tiles (256x256px) for zoom levels and extracts cluster themes using GPT-5.4.
 

@@ -511,7 +511,9 @@ def cluster_screenshots_inner(config, params: TSNEParams, last_state_hash=None):
             # this handful into several clusters and title each with the LLM.
             info['clusters'] = single_cluster(info, FALLBACK_CLUSTER_TITLE)
         image = Image.fromarray(image)
-        if not params.LOCAL:
+        if params.SKIP_TILES:
+            yield dict(msg="Skipping tiles.")
+        elif not params.LOCAL:
             yield dict(msg="Creating tiles.")
             yield dict(action='tiles', image=image)
         else:
